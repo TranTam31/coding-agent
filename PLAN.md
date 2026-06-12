@@ -6,10 +6,10 @@ This file tracks implementation progress for the Coding Agent VS Code Extension.
 
 ## Current Status
 
-- Project phase: planning.
-- Repository state: only project guidance exists.
-- Implemented code: none yet.
-- Next recommended step: Milestone 1, create the VS Code extension shell and initial folder structure.
+- Project phase: Milestone 1 complete.
+- Repository state: TypeScript VS Code extension shell exists.
+- Implemented code: command activation, webview panel, prompt input, placeholder event display, TypeScript build config.
+- Next recommended step: Milestone 2, add session and event-log services.
 
 ## Progress Rules
 
@@ -29,16 +29,16 @@ Goal: create a minimal VS Code extension that can open an agent panel and accept
 
 Checklist:
 
-- [ ] Initialize a TypeScript VS Code extension project.
-- [ ] Add `package.json` commands and extension activation metadata.
-- [ ] Add `tsconfig.json`.
-- [ ] Add `src/extension.ts`.
-- [ ] Add a command such as `codingAgent.openPanel`.
-- [ ] Add a webview panel or sidebar view for the agent UI.
-- [ ] Add a text input for user prompts.
-- [ ] Add a simple message/event display area.
-- [ ] Add basic build script.
-- [ ] Verify the extension compiles.
+- [x] Initialize a TypeScript VS Code extension project.
+- [x] Add `package.json` commands and extension activation metadata.
+- [x] Add `tsconfig.json`.
+- [x] Add `src/extension.ts`.
+- [x] Add a command such as `codingAgent.openPanel`.
+- [x] Add a webview panel or sidebar view for the agent UI.
+- [x] Add a text input for user prompts.
+- [x] Add a simple message/event display area.
+- [x] Add basic build script.
+- [x] Verify the extension compiles.
 
 Expected outcome:
 
@@ -203,7 +203,10 @@ Expected outcome:
 
 - Created `AGENT.md` with the project goal, OpenCode-inspired architecture, model strategy, safety boundaries, and milestone direction.
 - Created `PLAN.md` as the persistent progress tracker.
+- Completed Milestone 1 by scaffolding a TypeScript VS Code extension with `package.json`, `tsconfig.json`, `.gitignore`, and `src/extension.ts`.
+- Added command `codingAgent.openPanel`, a webview panel, prompt submission, and local placeholder events.
+- Installed npm dependencies and verified the project compiles with `npm run compile`.
 
 ## Next Step
 
-Implement Milestone 1: scaffold the TypeScript VS Code extension shell, add an agent panel, accept a prompt, and display a placeholder event.
+Implement Milestone 2: add `SessionService`, `SessionStore`, `SessionInput`, and `EventLog`; create a session when the first prompt is submitted; render recorded events in the UI.

@@ -1,0 +1,36 @@
+{
+  "name": "coding-agent",
+  "displayName": "Coding Agent",
+  "description": "A prototype VS Code coding-agent extension inspired by OpenCode's agent loop architecture.",
+  "version": "0.0.1",
+  "private": true,
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:codingAgent.openPanel"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "codingAgent.openPanel",
+        "title": "Coding Agent: Open Panel"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.29",
+    "@types/vscode": "^1.100.0",
+    "typescript": "^5.8.3"
+  }
+}
