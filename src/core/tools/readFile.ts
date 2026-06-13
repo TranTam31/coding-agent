@@ -8,6 +8,17 @@ type ReadFileInput = {
 export const readFileTool: ToolDefinition = {
   name: "read_file",
   description: "Read a text file from the current workspace.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Workspace-relative file path to read."
+      }
+    },
+    required: ["path"],
+    additionalProperties: false
+  },
   async execute(input, context) {
     const parsed = parseInput(input);
     const file = await readWorkspaceTextFile(context.workspaceFolder, parsed.path);

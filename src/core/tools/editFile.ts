@@ -11,6 +11,29 @@ type EditFileInput = {
 export const editFileTool: ToolDefinition = {
   name: "edit_file",
   description: "Edit a text file by replacing an exact old string. Requires permission.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Workspace-relative file path to edit."
+      },
+      oldString: {
+        type: "string",
+        description: "Exact existing text to replace. Must be copied from the file."
+      },
+      newString: {
+        type: "string",
+        description: "Replacement text."
+      },
+      replaceAll: {
+        type: "boolean",
+        description: "Set true only when every occurrence should be replaced."
+      }
+    },
+    required: ["path", "oldString", "newString"],
+    additionalProperties: false
+  },
   permission: {
     action: "edit",
     resource: (input) => parseInput(input).path,

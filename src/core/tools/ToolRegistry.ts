@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import type { JsonSchema, ModelToolDefinition } from "../model/ModelClient";
 import type { PermissionService } from "../permission/PermissionService";
 
 export type ToolContext = {
@@ -15,6 +16,7 @@ export type ToolResult = {
 export type ToolDefinition = {
   name: string;
   description: string;
+  inputSchema: JsonSchema;
   permission?: {
     action: string;
     resource(input: unknown, context: ToolContext): string;
@@ -38,6 +40,14 @@ export class ToolRegistry {
 
   get(name: string) {
     return this.tools.get(name);
+  }
+
+  toModelTools(): ModelToolDefinition[] {
+    return [...this.tools.values()].map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      inputSchema: tool.inputSchema
+    }));
   }
 
   async execute(name: string, input: unknown, context: ToolContext) {

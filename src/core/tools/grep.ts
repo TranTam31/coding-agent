@@ -11,6 +11,25 @@ type GrepInput = {
 export const grepTool: ToolDefinition = {
   name: "grep",
   description: "Search text inside workspace files.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      query: {
+        type: "string",
+        description: "Text to search for."
+      },
+      include: {
+        type: "string",
+        description: "Optional workspace glob, for example src/**/*.ts."
+      },
+      maxResults: {
+        type: "number",
+        description: "Maximum number of matching lines to return."
+      }
+    },
+    required: ["query"],
+    additionalProperties: false
+  },
   async execute(input, context) {
     const parsed = parseInput(input);
     const maxResults = parsed.maxResults ?? 50;

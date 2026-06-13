@@ -150,6 +150,7 @@ export class SessionRunner {
       sessionId: request.session.id,
       inputId: request.input.id,
       messages,
+      tools: this.toolRegistry.toModelTools(),
       contextFiles: request.contextFiles,
       signal
     })) {

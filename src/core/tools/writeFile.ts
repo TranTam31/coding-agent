@@ -11,6 +11,21 @@ type WriteFileInput = {
 export const writeFileTool: ToolDefinition = {
   name: "write_file",
   description: "Create or overwrite a text file in the current workspace. Requires permission.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Workspace-relative file path to create or overwrite."
+      },
+      content: {
+        type: "string",
+        description: "Full text content to write."
+      }
+    },
+    required: ["path", "content"],
+    additionalProperties: false
+  },
   permission: {
     action: "write",
     resource: (input) => parseInput(input).path,

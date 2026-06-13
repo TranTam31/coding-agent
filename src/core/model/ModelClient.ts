@@ -3,6 +3,22 @@ export type ModelMessage = {
   content: string;
 };
 
+export type JsonSchema = {
+  type: string;
+  description?: string;
+  properties?: Record<string, JsonSchema>;
+  items?: JsonSchema;
+  required?: string[];
+  enum?: string[];
+  additionalProperties?: boolean;
+};
+
+export type ModelToolDefinition = {
+  name: string;
+  description: string;
+  inputSchema: JsonSchema;
+};
+
 export type PromptContextFile = {
   path: string;
   source: "mention" | "attached";
@@ -28,6 +44,7 @@ export type ModelRequest = {
   sessionId: string;
   inputId: string;
   messages: ModelMessage[];
+  tools?: ModelToolDefinition[];
   contextFiles: PromptContextFile[];
   signal: AbortSignal;
 };

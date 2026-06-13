@@ -10,6 +10,21 @@ type GlobInput = {
 export const globTool: ToolDefinition = {
   name: "glob",
   description: "Find workspace files by glob pattern.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      pattern: {
+        type: "string",
+        description: "Workspace glob pattern, for example src/**/*.ts."
+      },
+      maxResults: {
+        type: "number",
+        description: "Maximum number of files to return."
+      }
+    },
+    required: ["pattern"],
+    additionalProperties: false
+  },
   async execute(input, context) {
     const parsed = parseInput(input);
     const maxResults = parsed.maxResults ?? 50;

@@ -1,4 +1,4 @@
-import type { AvailableModel, ModelClient, ModelMessage, ModelRequest } from "../ModelClient";
+import type { AvailableModel, JsonSchema, ModelClient, ModelMessage, ModelRequest, ModelToolDefinition } from "../ModelClient";
 import { createReadFileToolCalls, shouldReadContextFiles, streamText } from "../contextTooling";
 import type { ModelProvider, ProviderModelResult } from "./types";
 
@@ -23,6 +23,11 @@ type GeminiGenerateResponse = {
     content?: {
       parts?: Array<{
         text?: string;
+        functionCall?: {
+          id?: string;
+          name?: string;
+          args?: Record<string, unknown>;
+        };
       }>;
     };
   }>;
@@ -77,8 +82,26 @@ export class GeminiModelClient implements ModelClient {
       return;
     }
 
-    const text = await this.generate(request);
-    yield* streamText(text, request.signal);
+    const result = await this.generate(request);
+
+    for (const toolCall of result.toolCalls) {
+      yield {
+        type: "tool_call" as const,
+        id: toolCall.id,
+        name: toolCall.name,
+        input: toolCall.input
+      };
+    }
+
+    if (result.text) {
+      yield* streamText(result.text, request.signal);
+      return;
+    }
+
+    yield {
+      type: "finish" as const,
+      reason: "stop" as const
+    };
   }
 
   private async generate(request: ModelRequest) {
@@ -89,7 +112,8 @@ export class GeminiModelClient implements ModelClient {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        contents: toGeminiContents(request.messages)
+        contents: toGeminiContents(request.messages),
+        tools: toGeminiTools(request.tools)
       }),
       signal: request.signal
     });
@@ -100,7 +124,14 @@ export class GeminiModelClient implements ModelClient {
       throw new Error(json.error?.message ?? `Gemini generation failed: ${response.status}`);
     }
 
-    return json.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
+    const parts = json.candidates?.[0]?.content?.parts ?? [];
+
+    return {
+      text: parts.map((part) => part.text ?? "").join(""),
+      toolCalls: parts
+        .map((part, index) => part.functionCall ? toModelToolCall(part.functionCall, index) : undefined)
+        .filter((toolCall): toolCall is NonNullable<typeof toolCall> => toolCall !== undefined)
+    };
   }
 }
 
@@ -135,4 +166,45 @@ function toGeminiContents(messages: ModelMessage[]) {
   }
 
   return contents;
+}
+
+function toGeminiTools(tools: ModelToolDefinition[] | undefined) {
+  if (!tools || tools.length === 0) {
+    return undefined;
+  }
+
+  return [
+    {
+      functionDeclarations: tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        parameters: toGeminiSchema(tool.inputSchema)
+      }))
+    }
+  ];
+}
+
+function toGeminiSchema(schema: JsonSchema): Record<string, unknown> {
+  return {
+    type: schema.type.toUpperCase(),
+    description: schema.description,
+    required: schema.required,
+    enum: schema.enum,
+    properties: schema.properties
+      ? Object.fromEntries(Object.entries(schema.properties).map(([key, value]) => [key, toGeminiSchema(value)]))
+      : undefined,
+    items: schema.items ? toGeminiSchema(schema.items) : undefined
+  };
+}
+
+function toModelToolCall(functionCall: { id?: string; name?: string; args?: Record<string, unknown> }, index: number) {
+  if (!functionCall.name) {
+    return undefined;
+  }
+
+  return {
+    id: functionCall.id ?? `gemini_tool_${index}_${Date.now()}`,
+    name: functionCall.name,
+    input: functionCall.args ?? {}
+  };
 }

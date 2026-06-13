@@ -10,6 +10,28 @@ type TodoItem = {
 export const todoWriteTool: ToolDefinition = {
   name: "todo_write",
   description: "Update the current task todo list.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      todos: {
+        type: "array",
+        description: "Complete replacement todo list for the current task.",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            content: { type: "string" },
+            status: { type: "string", enum: ["pending", "in_progress", "completed"] },
+            priority: { type: "string", enum: ["low", "medium", "high"] }
+          },
+          required: ["id", "content", "status"],
+          additionalProperties: false
+        }
+      }
+    },
+    required: ["todos"],
+    additionalProperties: false
+  },
   async execute(input) {
     const todos = parseInput(input);
 

@@ -269,6 +269,8 @@ Every tool must:
 
 Mutation tools must declare permission metadata and must not execute if `PermissionService` is unavailable. Provider adapters should expose registered tools through native tool/function declarations so real models can call the same registry path as the fake model.
 
+Provider-native tool/function declarations mean each model adapter must translate the internal `ToolDefinition` contract into the provider's request format. Gemini uses `tools[].functionDeclarations[]`; OpenAI-compatible providers such as Groq use `tools: [{ type: "function", function: ... }]`. Provider responses must be normalized back into `ModelEvent.tool_call` so `SessionRunner` remains provider-independent.
+
 Built-in tools for the prototype:
 
 - `read_file`: read text files, with pagination.

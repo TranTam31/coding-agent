@@ -23,6 +23,17 @@ type HunkLine = {
 export const applyPatchTool: ToolDefinition = {
   name: "apply_patch",
   description: "Apply a basic unified diff patch to files in the current workspace. Requires permission.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      patch: {
+        type: "string",
+        description: "Unified diff patch. Use write_file for brand-new files."
+      }
+    },
+    required: ["patch"],
+    additionalProperties: false
+  },
   permission: {
     action: "apply_patch",
     resource: () => "*",

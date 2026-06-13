@@ -9,6 +9,16 @@ type ListDirInput = {
 export const listDirTool: ToolDefinition = {
   name: "list_dir",
   description: "List files and directories inside the current workspace.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      path: {
+        type: "string",
+        description: "Workspace-relative directory path. Use . for the workspace root."
+      }
+    },
+    additionalProperties: false
+  },
   async execute(input, context) {
     const parsed = parseInput(input);
     const target = resolveWorkspacePath(context.workspaceFolder, parsed.path ?? ".");

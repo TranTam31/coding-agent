@@ -1,8 +1,10 @@
 import type {
   AvailableModel,
+  JsonSchema,
   ModelClient,
   ModelMessage,
   ModelRequest,
+  ModelToolDefinition,
 } from "../ModelClient";
 import {
   createReadFileToolCalls,
@@ -25,6 +27,14 @@ type GroqChatResponse = {
   choices?: Array<{
     message?: {
       content?: string;
+      tool_calls?: Array<{
+        id?: string;
+        type?: string;
+        function?: {
+          name?: string;
+          arguments?: string;
+        };
+      }>;
     };
   }>;
   error?: {
@@ -89,8 +99,26 @@ export class GroqModelClient implements ModelClient {
       return;
     }
 
-    const text = await this.generate(request);
-    yield* streamText(text, request.signal);
+    const result = await this.generate(request);
+
+    for (const toolCall of result.toolCalls) {
+      yield {
+        type: "tool_call" as const,
+        id: toolCall.id,
+        name: toolCall.name,
+        input: toolCall.input,
+      };
+    }
+
+    if (result.text) {
+      yield* streamText(result.text, request.signal);
+      return;
+    }
+
+    yield {
+      type: "finish" as const,
+      reason: "stop" as const,
+    };
   }
 
   private async generate(request: ModelRequest) {
@@ -103,6 +131,7 @@ export class GroqModelClient implements ModelClient {
       body: JSON.stringify({
         model: this.modelId,
         messages: toGroqMessages(request.messages),
+        tools: toGroqTools(request.tools),
       }),
       signal: request.signal,
     });
@@ -115,7 +144,14 @@ export class GroqModelClient implements ModelClient {
       );
     }
 
-    return json.choices?.[0]?.message?.content ?? "";
+    const message = json.choices?.[0]?.message;
+
+    return {
+      text: message?.content ?? "",
+      toolCalls: (message?.tool_calls ?? [])
+        .map((toolCall, index) => toModelToolCall(toolCall, index))
+        .filter((toolCall): toolCall is NonNullable<typeof toolCall> => toolCall !== undefined),
+    };
   }
 }
 
@@ -134,4 +170,64 @@ function toGroqMessages(messages: ModelMessage[]) {
         ? `Tool result:\n${message.content}`
         : message.content,
   }));
+}
+
+function toGroqTools(tools: ModelToolDefinition[] | undefined) {
+  if (!tools || tools.length === 0) {
+    return undefined;
+  }
+
+  return tools.map((tool) => ({
+    type: "function",
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: toOpenAiSchema(tool.inputSchema),
+    },
+  }));
+}
+
+function toOpenAiSchema(schema: JsonSchema): Record<string, unknown> {
+  return {
+    ...schema,
+    properties: schema.properties
+      ? Object.fromEntries(Object.entries(schema.properties).map(([key, value]) => [key, toOpenAiSchema(value)]))
+      : undefined,
+    items: schema.items ? toOpenAiSchema(schema.items) : undefined,
+  };
+}
+
+function toModelToolCall(
+  toolCall: {
+    id?: string;
+    function?: {
+      name?: string;
+      arguments?: string;
+    };
+  },
+  index: number,
+) {
+  const name = toolCall.function?.name;
+
+  if (!name) {
+    return undefined;
+  }
+
+  return {
+    id: toolCall.id ?? `groq_tool_${index}_${Date.now()}`,
+    name,
+    input: parseArguments(toolCall.function?.arguments),
+  };
+}
+
+function parseArguments(value: string | undefined) {
+  if (!value) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return {};
+  }
 }

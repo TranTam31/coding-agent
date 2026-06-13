@@ -9,7 +9,7 @@ This file tracks implementation progress for the Coding Agent VS Code Extension.
 - Project phase: Milestone 6 in progress.
 - Repository state: TypeScript VS Code extension shell with durable session/event foundations, session history projection, fake agent loop, real model provider layer, basic multi-session UI, read-oriented tool registry, and React/Tailwind prompt file context UI.
 - Implemented code: command activation, webview panel, React webview, Tailwind styling, prompt input, session store, session input inbox, event log, event replay, history projector, persistent context compactor, fake model client, dynamic selected model client, Gemini provider, Groq provider, VS Code SecretStorage API key handling, model settings dialog, model selector, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching, `@file` context resolution with selector, open/preview-tab context file chips, read/list/glob/grep/todo tools, mutation tools, permission service/store, approval UI, tool call/result events.
-- Next recommended step: add provider-native tool/function declarations so Gemini/Groq can call read and mutation tools directly, then harden patch partial-failure reporting and add tests.
+- Next recommended step: validate provider-native tool calling with real Gemini and Groq models, then harden patch partial-failure reporting and add tests.
 
 ## Progress Rules
 
@@ -126,7 +126,7 @@ Checklist:
 - [ ] Optionally implement `OpenRouterClient`.
 - [x] Optionally implement `GroqClient`.
 - [x] Convert provider streaming events into the common `ModelEvent` stream.
-- [ ] Convert tool definitions into provider-specific tool/function declarations.
+- [x] Convert tool definitions into provider-specific tool/function declarations.
 - [x] Verify a real model can answer without tools.
 - [x] Verify the runtime can still call a read tool before invoking real providers when context-file reading is requested.
 
@@ -301,7 +301,13 @@ Expected outcome:
 - Added `write_file`, `edit_file`, and basic unified-diff `apply_patch` tools. All mutation tools stay inside the workspace resolver and require approval.
 - Updated `FakeModelClient` with deterministic test syntax for mutation tools: `write_file {...}`, `edit_file {...}`, and `apply_patch {...}`.
 - Verified the project compiles with `npm run compile`.
+- Added model-facing tool schemas to every registered tool and exposed them through `ToolRegistry.toModelTools()`.
+- Updated `SessionRunner` to pass registered tool definitions into each provider turn.
+- Added provider-native tool/function declarations for Gemini and Groq. Gemini receives `tools[].functionDeclarations[]` and Groq receives OpenAI-compatible `tools`.
+- Updated Gemini and Groq adapters to parse provider tool-call responses into the common `ModelEvent.tool_call` stream so real models can use the same `SessionRunner` and permission path as the fake model.
+- Verified the project compiles with `npm run compile`.
+- Fixed Gemini tool schema conversion by stripping JSON Schema fields that Gemini's function declaration schema rejects, such as `additionalProperties`, while keeping those fields available for OpenAI-compatible providers like Groq.
 
 ## Next Step
 
-Add provider-native tool/function declarations for Gemini and Groq so real models can call the registered tools directly, then harden patch partial-failure reporting and add tests for `edit_file`.
+Validate provider-native tool calling with real Gemini and Groq models, then harden patch partial-failure reporting and add tests for `edit_file`.
