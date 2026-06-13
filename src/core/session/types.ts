@@ -13,7 +13,13 @@ export type SessionInputStatus = "admitted" | "promoted" | "cancelled";
 export type SessionEventType =
   | "session.created"
   | "session.input.admitted"
-  | "session.input.promoted";
+  | "session.input.promoted"
+  | "session.step.started"
+  | "session.step.ended"
+  | "session.step.failed"
+  | "session.interrupt.requested"
+  | "assistant.text.delta"
+  | "assistant.text.ended";
 
 export type SessionRecord = {
   id: string;

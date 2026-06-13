@@ -6,10 +6,10 @@ This file tracks implementation progress for the Coding Agent VS Code Extension.
 
 ## Current Status
 
-- Project phase: Milestone 2 complete.
-- Repository state: TypeScript VS Code extension shell with durable session/event foundations.
-- Implemented code: command activation, webview panel, prompt input, session store, session input inbox, event log, event replay, TypeScript build config.
-- Next recommended step: Milestone 3, add a fake agent loop and fake model client.
+- Project phase: Milestone 3 complete.
+- Repository state: TypeScript VS Code extension shell with durable session/event foundations and a fake agent loop.
+- Implemented code: command activation, webview panel, prompt input, session store, session input inbox, event log, event replay, fake model client, session runner, streamed assistant text, basic interrupt.
+- Next recommended step: Milestone 4, add tool registry and safe read-oriented workspace tools.
 
 ## Progress Rules
 
@@ -75,16 +75,16 @@ Goal: implement the real runtime loop shape with a fake model before integrating
 
 Checklist:
 
-- [ ] Add `SessionRunner`.
-- [ ] Add `ModelClient` interface.
-- [ ] Add `FakeModelClient`.
-- [ ] Stream fake text deltas through the event system.
-- [ ] Record `session.step.started`.
-- [ ] Record `assistant.text.delta` as live UI events.
-- [ ] Record `assistant.text.ended`.
-- [ ] Record `session.step.ended`.
-- [ ] Enforce `maxProviderTurnsPerActivity`.
-- [ ] Support interrupt at a basic level.
+- [x] Add `SessionRunner`.
+- [x] Add `ModelClient` interface.
+- [x] Add `FakeModelClient`.
+- [x] Stream fake text deltas through the event system.
+- [x] Record `session.step.started`.
+- [x] Record `assistant.text.delta` as live UI events.
+- [x] Record `assistant.text.ended`.
+- [x] Record `session.step.ended`.
+- [x] Enforce `maxProviderTurnsPerActivity`.
+- [x] Support interrupt at a basic level.
 
 Expected outcome:
 
@@ -213,7 +213,12 @@ Expected outcome:
 - Persisted sessions, inputs, and events through VS Code `workspaceState` as the first storage backend.
 - Changed prompt submission to create a session on first use, record `session.created`, admit input, promote input, and replay session events in the webview.
 - Verified the project compiles with `npm run compile`.
+- Completed Milestone 3 by adding `ModelClient`, `FakeModelClient`, and `SessionRunner`.
+- Added durable events for `session.step.started`, `assistant.text.delta`, `assistant.text.ended`, `session.step.ended`, `session.step.failed`, and `session.interrupt.requested`.
+- Connected prompt submission to the fake agent loop so assistant text streams through the event system and replays from `assistant.text.ended`.
+- Added a basic Interrupt button that cancels the active fake model stream.
+- Verified the project compiles with `npm run compile`.
 
 ## Next Step
 
-Implement Milestone 3: add `SessionRunner`, `ModelClient`, and `FakeModelClient`; stream fake assistant text through the event system and enforce the first step limit.
+Implement Milestone 4: add `ToolRegistry`, schema validation, and safe read tools such as `read_file`, `list_dir`, `grep`, `glob`, and `todo_write`; teach the fake model to emit a tool call and continue after the tool result.

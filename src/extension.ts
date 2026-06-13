@@ -1,5 +1,7 @@
 import * as vscode from "vscode";
+import { FakeModelClient } from "./core/model/FakeModelClient";
 import { EventLog } from "./core/session/EventLog";
+import { SessionRunner } from "./core/session/SessionRunner";
 import { SessionService } from "./core/session/SessionService";
 import { SessionStore } from "./core/session/SessionStore";
 import type { SessionEvent } from "./core/session/types";
@@ -11,15 +13,20 @@ type WebviewMessage =
     }
   | {
       type: "ready";
+    }
+  | {
+      type: "interrupt";
     };
 
 export function activate(context: vscode.ExtensionContext) {
   const sessionStore = new SessionStore(context.workspaceState);
   const eventLog = new EventLog(context.workspaceState);
   const sessionService = new SessionService(sessionStore, eventLog, getWorkspaceUri());
+  const modelClient = new FakeModelClient();
+  const sessionRunner = new SessionRunner(sessionStore, eventLog, modelClient);
 
   const openPanelCommand = vscode.commands.registerCommand("codingAgent.openPanel", () => {
-    AgentPanel.show(context.extensionUri, sessionService);
+    AgentPanel.show(context.extensionUri, sessionService, sessionRunner);
   });
 
   context.subscriptions.push(openPanelCommand, eventLog);
@@ -32,9 +39,10 @@ class AgentPanel {
   private readonly panel: vscode.WebviewPanel;
   private readonly extensionUri: vscode.Uri;
   private readonly sessionService: SessionService;
+  private readonly sessionRunner: SessionRunner;
   private disposables: vscode.Disposable[] = [];
 
-  static show(extensionUri: vscode.Uri, sessionService: SessionService) {
+  static show(extensionUri: vscode.Uri, sessionService: SessionService, sessionRunner: SessionRunner) {
     if (AgentPanel.currentPanel) {
       AgentPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
       return;
@@ -50,13 +58,19 @@ class AgentPanel {
       }
     );
 
-    AgentPanel.currentPanel = new AgentPanel(panel, extensionUri, sessionService);
+    AgentPanel.currentPanel = new AgentPanel(panel, extensionUri, sessionService, sessionRunner);
   }
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, sessionService: SessionService) {
+  private constructor(
+    panel: vscode.WebviewPanel,
+    extensionUri: vscode.Uri,
+    sessionService: SessionService,
+    sessionRunner: SessionRunner
+  ) {
     this.panel = panel;
     this.extensionUri = extensionUri;
     this.sessionService = sessionService;
+    this.sessionRunner = sessionRunner;
     this.panel.webview.html = this.getHtml(this.panel.webview);
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
@@ -77,6 +91,9 @@ class AgentPanel {
       case "prompt.submit":
         void this.handlePrompt(message.prompt);
         return;
+      case "interrupt":
+        void this.handleInterrupt();
+        return;
     }
   }
 
@@ -89,20 +106,22 @@ class AgentPanel {
     }
 
     try {
-      await this.sessionService.submitPrompt(trimmed);
-      this.postLiveEvent(
-        "system",
-        "Milestone 2 recorded the prompt as durable session input. The fake agent loop starts in Milestone 3."
-      );
+      const result = await this.sessionService.submitPrompt(trimmed);
+      await this.sessionRunner.run(result.session, result.input);
     } catch (error) {
       this.postLiveEvent("error", error instanceof Error ? error.message : "Failed to submit prompt.");
     }
   }
 
+  private async handleInterrupt() {
+    const interrupted = await this.sessionRunner.interrupt();
+    this.postLiveEvent("system", interrupted ? "Interrupt requested." : "No active agent run to interrupt.");
+  }
+
   private replaceEvents(events: SessionEvent[]) {
     this.panel.webview.postMessage({
       type: "events.replace",
-      events: events.map((event) => this.toWebviewEvent(event))
+      events: toReplayableWebviewEvents(events)
     });
   }
 
@@ -113,10 +132,33 @@ class AgentPanel {
       return;
     }
 
-    this.panel.webview.postMessage({
-      type: "event.append",
-      event: this.toWebviewEvent(event)
-    });
+    if (event.type === "assistant.text.delta") {
+      this.panel.webview.postMessage({
+        type: "assistant.delta",
+        textId: String(event.data.textId ?? "assistant"),
+        delta: String(event.data.delta ?? ""),
+        timestamp: event.timestamp
+      });
+      return;
+    }
+
+    if (event.type === "assistant.text.ended") {
+      this.panel.webview.postMessage({
+        type: "assistant.ended",
+        textId: String(event.data.textId ?? "assistant"),
+        timestamp: event.timestamp
+      });
+      return;
+    }
+
+    const webviewEvent = toWebviewEvent(event);
+
+    if (webviewEvent) {
+      this.panel.webview.postMessage({
+        type: "event.append",
+        event: webviewEvent
+      });
+    }
   }
 
   private postLiveEvent(kind: "agent" | "error" | "system" | "user", text: string) {
@@ -129,15 +171,6 @@ class AgentPanel {
         timestamp: new Date().toISOString()
       }
     });
-  }
-
-  private toWebviewEvent(event: SessionEvent) {
-    return {
-      id: event.id,
-      kind: getEventKind(event),
-      text: formatSessionEvent(event),
-      timestamp: event.timestamp
-    };
   }
 
   private dispose() {
@@ -286,7 +319,7 @@ class AgentPanel {
   <main class="shell">
     <header class="header">
       <h1 class="title">Coding Agent</h1>
-      <p class="subtitle">Milestone 2: durable session inputs and replayable event history.</p>
+      <p class="subtitle">Milestone 3: fake agent loop streaming through durable runtime events.</p>
     </header>
 
     <section id="events" class="events" aria-live="polite"></section>
@@ -294,6 +327,7 @@ class AgentPanel {
     <form id="composer" class="composer">
       <textarea id="prompt" placeholder="Describe a coding task..." spellcheck="true"></textarea>
       <div class="actions">
+        <button type="button" id="interrupt">Interrupt</button>
         <button type="submit">Submit</button>
       </div>
     </form>
@@ -304,6 +338,7 @@ class AgentPanel {
     const events = document.getElementById("events");
     const composer = document.getElementById("composer");
     const promptInput = document.getElementById("prompt");
+    const interruptButton = document.getElementById("interrupt");
 
     composer.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -311,6 +346,10 @@ class AgentPanel {
       vscode.postMessage({ type: "prompt.submit", prompt });
       promptInput.value = "";
       promptInput.focus();
+    });
+
+    interruptButton.addEventListener("click", () => {
+      vscode.postMessage({ type: "interrupt" });
     });
 
     window.addEventListener("message", (event) => {
@@ -324,6 +363,14 @@ class AgentPanel {
 
       if (message.type === "event.append") {
         appendEvent(message.event);
+      }
+
+      if (message.type === "assistant.delta") {
+        appendAssistantDelta(message.textId, message.delta, message.timestamp);
+      }
+
+      if (message.type === "assistant.ended") {
+        finalizeAssistantMessage(message.textId, message.timestamp);
       }
     });
 
@@ -342,6 +389,42 @@ class AgentPanel {
       item.append(meta, text);
       events.append(item);
       events.scrollTop = events.scrollHeight;
+    }
+
+    function appendAssistantDelta(textId, delta, timestamp) {
+      let item = document.querySelector('[data-text-id="' + textId + '"]');
+
+      if (!item) {
+        item = document.createElement("article");
+        item.className = "event";
+        item.dataset.textId = textId;
+
+        const meta = document.createElement("div");
+        meta.className = "event__meta";
+        meta.textContent = "agent - " + new Date(timestamp).toLocaleTimeString();
+
+        const text = document.createElement("p");
+        text.className = "event__text";
+        text.dataset.role = "assistant-text";
+
+        item.append(meta, text);
+        events.append(item);
+      }
+
+      const text = item.querySelector('[data-role="assistant-text"]');
+      text.textContent += delta;
+      events.scrollTop = events.scrollHeight;
+    }
+
+    function finalizeAssistantMessage(textId, timestamp) {
+      let item = document.querySelector('[data-text-id="' + textId + '"]');
+
+      if (!item) {
+        appendAssistantDelta(textId, "", timestamp);
+        item = document.querySelector('[data-text-id="' + textId + '"]');
+      }
+
+      item.dataset.final = "true";
     }
 
     vscode.postMessage({ type: "ready" });
@@ -366,12 +449,42 @@ function getWorkspaceUri() {
   return vscode.workspace.workspaceFolders?.[0]?.uri.toString() ?? "untitled-workspace";
 }
 
+function toReplayableWebviewEvents(events: SessionEvent[]) {
+  return events
+    .filter((event) => event.type !== "assistant.text.delta")
+    .map((event) => toWebviewEvent(event))
+    .filter((event): event is NonNullable<ReturnType<typeof toWebviewEvent>> => event !== undefined);
+}
+
+function toWebviewEvent(event: SessionEvent) {
+  const formatted = formatSessionEvent(event);
+
+  if (!formatted) {
+    return undefined;
+  }
+
+  return {
+    id: event.id,
+    kind: getEventKind(event),
+    text: formatted,
+    timestamp: event.timestamp
+  };
+}
+
 function getEventKind(event: SessionEvent): "agent" | "error" | "system" | "user" {
   switch (event.type) {
     case "session.input.admitted":
       return "user";
+    case "assistant.text.ended":
+      return "agent";
+    case "session.step.failed":
+      return "error";
     case "session.created":
     case "session.input.promoted":
+    case "session.step.started":
+    case "session.step.ended":
+    case "session.interrupt.requested":
+    case "assistant.text.delta":
       return "system";
   }
 }
@@ -384,5 +497,17 @@ function formatSessionEvent(event: SessionEvent) {
       return String(event.data.prompt ?? "Prompt admitted.");
     case "session.input.promoted":
       return `Input promoted to model-visible history boundary (${String(event.data.inputId ?? "unknown input")}).`;
+    case "session.step.started":
+      return `Agent step started (turn ${String(event.data.turn ?? "unknown")}).`;
+    case "session.step.ended":
+      return `Agent step ended (${String(event.data.finishReason ?? "unknown")}).`;
+    case "session.step.failed":
+      return `Agent step failed: ${String(event.data.message ?? "Unknown error")}.`;
+    case "session.interrupt.requested":
+      return "Interrupt requested for the active session.";
+    case "assistant.text.delta":
+      return undefined;
+    case "assistant.text.ended":
+      return String(event.data.text ?? "");
   }
 }

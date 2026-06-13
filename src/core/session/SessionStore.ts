@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { createId } from "./id";
-import type { SessionInput, SessionRecord, SessionSnapshot } from "./types";
+import type { SessionInput, SessionRecord, SessionSnapshot, SessionStatus } from "./types";
 
 const STORAGE_KEY = "codingAgent.sessionSnapshot.v1";
 
@@ -61,14 +61,27 @@ export class SessionStore {
     });
   }
 
-  async updateInputStatus(inputId: string, status: SessionInput["status"]) {
+  async updateSessionStatus(sessionId: string, status: SessionStatus) {
     const now = new Date().toISOString();
     const snapshot = this.getSnapshot();
 
     await this.saveSnapshot({
       ...snapshot,
       sessions: snapshot.sessions.map((session) =>
-        session.id === snapshot.currentSessionId ? { ...session, updatedAt: now } : session
+        session.id === sessionId ? { ...session, status, updatedAt: now } : session
+      )
+    });
+  }
+
+  async updateInputStatus(inputId: string, status: SessionInput["status"]) {
+    const now = new Date().toISOString();
+    const snapshot = this.getSnapshot();
+    const inputToUpdate = snapshot.inputs.find((input) => input.id === inputId);
+
+    await this.saveSnapshot({
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) =>
+        session.id === inputToUpdate?.sessionId ? { ...session, updatedAt: now } : session
       ),
       inputs: snapshot.inputs.map((input) => (input.id === inputId ? { ...input, status } : input))
     });
