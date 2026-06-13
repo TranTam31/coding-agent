@@ -27,6 +27,7 @@ export class FakeModelClient implements ModelClient {
 
     const response = [
       "Fake agent loop started.\n\n",
+      `I can see ${Math.max(0, request.messages.length - 1)} prior message${request.messages.length - 1 === 1 ? "" : "s"} in this session before the current prompt.\n\n`,
       "This response is intentionally longer and chunked into small deltas so the webview can prove that streaming is real. ",
       "The current runtime is already following the same path a real coding model will use later: the prompt enters the durable session inbox, ",
       "the service promotes it at a safe boundary, the runner starts a provider turn, the model client emits deltas, and each delta is appended to the event log before the UI receives it.\n\n",

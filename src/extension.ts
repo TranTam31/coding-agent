@@ -4,6 +4,7 @@ import { DynamicModelClient } from "./core/model/DynamicModelClient";
 import { ModelService } from "./core/model/ModelService";
 import type { ModelProviderId, ModelRef } from "./core/model/ModelClient";
 import { EventLog } from "./core/session/EventLog";
+import { HistoryProjector } from "./core/session/HistoryProjector";
 import { SessionRunner } from "./core/session/SessionRunner";
 import { SessionService } from "./core/session/SessionService";
 import { SessionStore } from "./core/session/SessionStore";
@@ -77,6 +78,7 @@ class AgentPanel {
   private readonly sessionService: SessionService;
   private readonly sessionRunner: SessionRunner;
   private readonly modelService: ModelService;
+  private readonly historyProjector = new HistoryProjector();
   private disposables: vscode.Disposable[] = [];
 
   static show(extensionUri: vscode.Uri, sessionService: SessionService, sessionRunner: SessionRunner, modelService: ModelService) {
@@ -168,6 +170,11 @@ class AgentPanel {
       return;
     }
 
+    if (isShowContextPrompt(trimmed)) {
+      this.showProjectedContext();
+      return;
+    }
+
     try {
       this.setRunning(true);
       const workspaceFolder = getPrimaryWorkspaceFolder();
@@ -208,6 +215,40 @@ class AgentPanel {
     const interrupted = await this.sessionRunner.interrupt();
     this.postLiveEvent("system", interrupted ? "Interrupt requested." : "No active agent run to interrupt.");
   }
+
+  private showProjectedContext() {
+    const currentSession = this.sessionService.getCurrentSession();
+
+    if (!currentSession) {
+      this.postLiveEvent("agent", "No session context exists yet.");
+      return;
+    }
+
+    const context = this.historyProjector.project(this.sessionService.getCurrentSessionEvents(), "__debug_show_context__");
+
+    if (context.length === 0) {
+      this.postLiveEvent("agent", "The current session has no projected model context yet.");
+      return;
+    }
+
+    const rendered = context
+      .map((message, index) => {
+        return [`## Message ${index + 1}: ${message.role}`, "```text", message.content, "```"].join("\n");
+      })
+      .join("\n\n");
+
+    this.postLiveEvent(
+      "agent",
+      [
+        "Projected context preview.",
+        "",
+        "This is a live debug view only. It is not persisted into the session event log and will not be included in future context.",
+        "",
+        rendered
+      ].join("\n")
+    );
+  }
+
 
   private async handleNewSession() {
     if (this.sessionRunner.isRunning) {
@@ -420,6 +461,10 @@ function getNonce() {
 
 function getWorkspaceUri() {
   return vscode.workspace.workspaceFolders?.[0]?.uri.toString() ?? "untitled-workspace";
+}
+
+function isShowContextPrompt(prompt: string) {
+  return prompt.trim().toLowerCase() === "show context";
 }
 
 function toWebviewSession(session: SessionRecord) {

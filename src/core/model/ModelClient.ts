@@ -1,5 +1,5 @@
 export type ModelMessage = {
-  role: "user" | "assistant" | "tool";
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
 };
 

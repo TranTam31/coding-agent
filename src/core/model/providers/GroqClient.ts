@@ -128,7 +128,7 @@ function toAuthorizationHeader(apiKey: string) {
 
 function toGroqMessages(messages: ModelMessage[]) {
   return messages.map((message) => ({
-    role: message.role === "assistant" ? "assistant" : "user",
+    role: message.role === "assistant" ? "assistant" : message.role === "system" ? "system" : "user",
     content:
       message.role === "tool"
         ? `Tool result:\n${message.content}`

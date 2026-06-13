@@ -123,7 +123,12 @@ function toGeminiContents(messages: ModelMessage[]) {
       role: message.role === "assistant" ? "model" : "user",
       parts: [
         {
-          text: message.role === "tool" ? `Tool result:\n${message.content}` : message.content
+          text:
+            message.role === "system"
+              ? `System context:\n${message.content}`
+              : message.role === "tool"
+                ? `Tool result:\n${message.content}`
+                : message.content
         }
       ]
     });

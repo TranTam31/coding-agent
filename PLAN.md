@@ -7,8 +7,8 @@ This file tracks implementation progress for the Coding Agent VS Code Extension.
 ## Current Status
 
 - Project phase: Milestone 5 in progress.
-- Repository state: TypeScript VS Code extension shell with durable session/event foundations, fake agent loop, real model provider layer, basic multi-session UI, read-oriented tool registry, and React/Tailwind prompt file context UI.
-- Implemented code: command activation, webview panel, React webview, Tailwind styling, prompt input, session store, session input inbox, event log, event replay, fake model client, dynamic selected model client, Gemini provider, Groq provider, VS Code SecretStorage API key handling, model settings dialog, model selector, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching, `@file` context resolution with selector, open/preview-tab context file chips, read/list/glob/grep/todo tools, tool call/result events.
+- Repository state: TypeScript VS Code extension shell with durable session/event foundations, session history projection, fake agent loop, real model provider layer, basic multi-session UI, read-oriented tool registry, and React/Tailwind prompt file context UI.
+- Implemented code: command activation, webview panel, React webview, Tailwind styling, prompt input, session store, session input inbox, event log, event replay, history projector, fake model client, dynamic selected model client, Gemini provider, Groq provider, VS Code SecretStorage API key handling, model settings dialog, model selector, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching, `@file` context resolution with selector, open/preview-tab context file chips, read/list/glob/grep/todo tools, tool call/result events.
 - Next recommended step: finish Milestone 5 by validating Groq with a real key and deciding whether provider-native tool declarations are needed before file mutation work.
 
 ## Progress Rules
@@ -251,6 +251,17 @@ Expected outcome:
 - Verified the project compiles with `npm run compile`.
 - Confirmed through manual user testing that Gemini can answer through the real provider adapter.
 - Added Markdown rendering for model responses in the React webview using `react-markdown` and `remark-gfm`, including code blocks, inline code, lists, tables, blockquotes, and links.
+- Verified the project compiles with `npm run compile`.
+- Added `HistoryProjector` so each new provider turn receives prior user prompts and assistant responses from the current session event log.
+- Updated `SessionRunner` to prepend projected session history before the current prompt, fixing the previous behavior where models only saw the latest message.
+- Kept history bounded to recent messages for now; full compaction remains a later robustness task.
+- Verified the project compiles with `npm run compile`.
+- Reworked `HistoryProjector` into a bounded context pack instead of plain transcript replay: older turns are summarized into a synthetic system context, recent turns remain raw, and relevant file/tool facts are retained.
+- Updated provider adapters to support `system` model messages so the context pack can be passed explicitly to Groq and as system-context text for Gemini.
+- This mirrors the OpenCode-style direction: project durable session history into model messages, compact when needed, and keep event log as the source of truth.
+- Verified the project compiles with `npm run compile`.
+- Added a live-only `Show context` debug command. Typing exactly `Show context` renders the projected context pack in the UI without admitting the prompt, creating model output events, or adding the debug result back into future context.
+- Current context packs are derived from the durable session event log at run time; they are not persisted as separate summary records yet. Persisted compaction summaries remain a future robustness task.
 - Verified the project compiles with `npm run compile`.
 
 ## Next Step

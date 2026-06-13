@@ -485,6 +485,16 @@ The context sent to the model should include:
 
 Do not put the whole repository into context. Use tools so the model can read and search only what it needs.
 
+Do not blindly send the entire session transcript forever. Session context should be projected from durable events into a bounded context pack:
+
+- A synthetic session summary for older turns.
+- Recent raw user/assistant turns.
+- Relevant files and tool facts.
+- Current prompt context files.
+- Current todo state when implemented.
+
+The summary should preserve goals, constraints, progress, decisions, blockers, exact file paths, command names, error strings, and open questions. Recent raw turns should take precedence over the summary when they conflict.
+
 Compaction should:
 
 - Create a durable summary when history gets too large.

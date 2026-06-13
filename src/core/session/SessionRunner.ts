@@ -1,5 +1,6 @@
 import { createId } from "./id";
 import { EventLog } from "./EventLog";
+import { HistoryProjector } from "./HistoryProjector";
 import { SessionStore } from "./SessionStore";
 import type { ModelClient, ModelMessage, PromptContextFile } from "../model/ModelClient";
 import type { ToolRegistry } from "../tools/ToolRegistry";
@@ -26,6 +27,7 @@ export class SessionRunner {
     private readonly eventLog: EventLog,
     private readonly modelClient: ModelClient,
     private readonly toolRegistry: ToolRegistry,
+    private readonly historyProjector = new HistoryProjector(),
     private readonly options: SessionRunnerOptions = {}
   ) {}
 
@@ -75,7 +77,9 @@ export class SessionRunner {
 
   private async runActivity(request: SessionRunRequest, signal: AbortSignal) {
     const maxTurns = this.options.maxProviderTurnsPerActivity ?? DEFAULT_MAX_PROVIDER_TURNS;
+    const history = this.historyProjector.project(this.eventLog.allForSession(request.session.id), request.input.id);
     const messages: ModelMessage[] = [
+      ...history,
       {
         role: "user",
         content: request.input.prompt
