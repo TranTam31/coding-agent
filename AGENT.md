@@ -500,6 +500,9 @@ Compaction should:
 - Create a durable summary when history gets too large.
 - Preserve recent turns and todo state.
 - Keep the original event log intact.
+- Store a cutoff event ID so the context projector can combine the durable summary with only the raw messages after that cutoff.
+- Prefer model-generated summaries, but fall back to deterministic summaries when the selected provider fails so the agent run is not blocked by compaction.
+- Expose a live-only debug command such as `Show context` so developers can inspect the projected context without adding that inspection back into the session history.
 
 ## Task Tracking
 

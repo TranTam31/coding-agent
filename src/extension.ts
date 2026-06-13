@@ -224,7 +224,8 @@ class AgentPanel {
       return;
     }
 
-    const context = this.historyProjector.project(this.sessionService.getCurrentSessionEvents(), "__debug_show_context__");
+    const projection = this.historyProjector.inspect(this.sessionService.getCurrentSessionEvents(), "__debug_show_context__");
+    const context = projection.messages;
 
     if (context.length === 0) {
       this.postLiveEvent("agent", "The current session has no projected model context yet.");
@@ -236,6 +237,7 @@ class AgentPanel {
         return [`## Message ${index + 1}: ${message.role}`, "```text", message.content, "```"].join("\n");
       })
       .join("\n\n");
+    const metadata = projection.metadata;
 
     this.postLiveEvent(
       "agent",
@@ -243,6 +245,14 @@ class AgentPanel {
         "Projected context preview.",
         "",
         "This is a live debug view only. It is not persisted into the session event log and will not be included in future context.",
+        "",
+        "## Projection Metadata",
+        `- Persisted compaction: ${metadata.hasPersistedCompaction ? "yes" : "no"}`,
+        `- Compaction cutoff event: ${metadata.compactionCutoffEventId ?? "(none)"}`,
+        `- Compaction timestamp: ${metadata.compactionTimestamp ?? "(none)"}`,
+        `- Recent raw messages: ${metadata.recentRawMessageCount}`,
+        `- Projected chars: ${metadata.projectedChars}`,
+        `- Estimated tokens: ${metadata.estimatedTokens}`,
         "",
         rendered
       ].join("\n")
@@ -565,6 +575,8 @@ function getEventKind(event: SessionEvent): "agent" | "error" | "system" | "user
       return "error";
     case "tool.called":
     case "tool.success":
+    case "session.compaction.started":
+    case "session.compaction.ended":
       return "system";
     case "session.created":
     case "session.input.promoted":
@@ -592,6 +604,10 @@ function formatSessionEvent(event: SessionEvent) {
       return `Agent step failed: ${String(event.data.message ?? "Unknown error")}.`;
     case "session.interrupt.requested":
       return "Interrupt requested for the active session.";
+    case "session.compaction.started":
+      return `Context compaction started (${String(event.data.sourceMessageCount ?? "unknown")} older messages).`;
+    case "session.compaction.ended":
+      return `Context compaction ended (${String(event.data.method ?? "unknown")} summary, cutoff ${String(event.data.cutoffEventId ?? "unknown")}).`;
     case "tool.called":
       return `Tool called: ${String(event.data.name ?? "unknown")}.`;
     case "tool.success":

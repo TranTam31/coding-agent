@@ -18,6 +18,8 @@ export type SessionEventType =
   | "session.step.ended"
   | "session.step.failed"
   | "session.interrupt.requested"
+  | "session.compaction.started"
+  | "session.compaction.ended"
   | "assistant.text.delta"
   | "assistant.text.ended"
   | "tool.called"

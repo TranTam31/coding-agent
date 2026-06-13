@@ -6,10 +6,10 @@ This file tracks implementation progress for the Coding Agent VS Code Extension.
 
 ## Current Status
 
-- Project phase: Milestone 5 in progress.
+- Project phase: Milestone 5.5 in progress.
 - Repository state: TypeScript VS Code extension shell with durable session/event foundations, session history projection, fake agent loop, real model provider layer, basic multi-session UI, read-oriented tool registry, and React/Tailwind prompt file context UI.
-- Implemented code: command activation, webview panel, React webview, Tailwind styling, prompt input, session store, session input inbox, event log, event replay, history projector, fake model client, dynamic selected model client, Gemini provider, Groq provider, VS Code SecretStorage API key handling, model settings dialog, model selector, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching, `@file` context resolution with selector, open/preview-tab context file chips, read/list/glob/grep/todo tools, tool call/result events.
-- Next recommended step: finish Milestone 5 by validating Groq with a real key and deciding whether provider-native tool declarations are needed before file mutation work.
+- Implemented code: command activation, webview panel, React webview, Tailwind styling, prompt input, session store, session input inbox, event log, event replay, history projector, persistent context compactor, fake model client, dynamic selected model client, Gemini provider, Groq provider, VS Code SecretStorage API key handling, model settings dialog, model selector, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching, `@file` context resolution with selector, open/preview-tab context file chips, read/list/glob/grep/todo tools, tool call/result events.
+- Next recommended step: validate Milestone 5.5 with longer real sessions, then decide whether provider-native tool declarations should be added before permission/file mutation work.
 
 ## Progress Rules
 
@@ -134,6 +134,30 @@ Expected outcome:
 
 - The extension can use at least one real model provider.
 - The agent loop remains provider-independent.
+
+## Milestone 5.5: Durable Context Compaction
+
+Goal: make context handling closer to OpenCode-style agent runtimes by compacting older session history into a durable summary while preserving recent raw turns.
+
+Checklist:
+
+- [x] Add durable `session.compaction.started` and `session.compaction.ended` events.
+- [x] Add a `ContextCompactor` service separate from `SessionRunner`.
+- [x] Trigger compaction before provider turns when session history crosses a size threshold.
+- [x] Use the selected model to merge older transcript segments into a dense context summary.
+- [x] Store `summary`, `cutoffEventId`, source message count, estimated input size, and summary size on the compaction event.
+- [x] Fall back to a deterministic summary if model compaction fails or returns unusable output.
+- [x] Update `HistoryProjector` so persisted summaries are combined with recent raw messages after the cutoff.
+- [x] Keep the full event log intact rather than deleting old events.
+- [x] Update `Show context` to display projection metadata, including persisted compaction status, cutoff event, recent raw message count, chars, and estimated tokens.
+- [ ] Validate behavior with a long real Gemini session.
+
+Expected outcome:
+
+- The model no longer receives an ever-growing raw transcript.
+- Older context is represented by a durable summary event.
+- Recent turns remain raw and take precedence over the summary.
+- Developers can inspect the projected context with `Show context` without polluting future context.
 
 ## Milestone 6: Permission And File Mutation
 
@@ -263,7 +287,14 @@ Expected outcome:
 - Added a live-only `Show context` debug command. Typing exactly `Show context` renders the projected context pack in the UI without admitting the prompt, creating model output events, or adding the debug result back into future context.
 - Current context packs are derived from the durable session event log at run time; they are not persisted as separate summary records yet. Persisted compaction summaries remain a future robustness task.
 - Verified the project compiles with `npm run compile`.
+- Started Milestone 5.5 by adding durable context compaction modeled after OpenCode's compaction boundary.
+- Added `ContextCompactor`, which runs before provider turns, detects oversized session history, asks the selected model to merge older transcript segments into a compact summary, and falls back to a deterministic summary if model compaction fails.
+- Added `session.compaction.started` and `session.compaction.ended` events with summary, cutoff event ID, source message count, estimated input size, summary size, and compaction method.
+- Updated `HistoryProjector` to use persisted compaction summaries plus recent raw messages after the cutoff, instead of rebuilding only an in-memory summary every time.
+- Expanded `Show context` to display projection metadata including persisted compaction status, cutoff event, recent raw message count, projected chars, and estimated tokens.
+- Updated `FakeModelClient` with a deterministic compaction response so Milestone 5.5 can be tested without a real provider.
+- Updated `AGENT.md` with durable compaction requirements and verified the project compiles with `npm run compile`.
 
 ## Next Step
 
-Validate Milestone 5 with real Gemini and Groq API keys, then decide whether provider-native tool declarations should be added before Milestone 6.
+Validate Milestone 5.5 with a long real Gemini session, then decide whether provider-native tool declarations should be added before Milestone 6.

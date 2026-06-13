@@ -12,6 +12,7 @@ export type HistoryProjectorOptions = {
 };
 
 type ConversationMessage = ModelMessage & {
+  sourceEventId: string;
   timestamp: string;
 };
 
@@ -20,28 +21,89 @@ type FileFact = {
   reason: string;
 };
 
+export type ContextProjection = {
+  messages: ModelMessage[];
+  metadata: {
+    hasPersistedCompaction: boolean;
+    compactionSummary?: string;
+    compactionCutoffEventId?: string;
+    compactionTimestamp?: string;
+    projectedChars: number;
+    estimatedTokens: number;
+    recentRawMessageCount: number;
+  };
+};
+
 export class HistoryProjector {
   constructor(private readonly options: HistoryProjectorOptions = {}) {}
 
   project(events: SessionEvent[], currentInputId: string): ModelMessage[] {
+    return this.inspect(events, currentInputId).messages;
+  }
+
+  inspect(events: SessionEvent[], currentInputId: string): ContextProjection {
     const conversation = this.projectConversation(events, currentInputId);
     const recentCount = this.options.recentMessages ?? DEFAULT_RECENT_MESSAGES;
+    const latestCompaction = findLatestCompaction(events);
+
+    if (latestCompaction) {
+      const cutoffIndex = conversation.findIndex((message) => message.sourceEventId === latestCompaction.cutoffEventId);
+      const afterCutoff = cutoffIndex >= 0 ? conversation.slice(cutoffIndex + 1) : conversation;
+      const recentMessages = afterCutoff.slice(-recentCount);
+      const overflowMessages = afterCutoff.slice(0, -recentCount);
+      const summary = overflowMessages.length > 0
+        ? this.mergeSummaryWithOverflow(events, latestCompaction.summary, overflowMessages)
+        : latestCompaction.summary;
+      const messages = [
+        {
+          role: "system" as const,
+          content: this.formatPersistedSummary(summary)
+        },
+        ...recentMessages.map(stripTimestamp)
+      ];
+
+      return {
+        messages,
+        metadata: buildProjectionMetadata(messages, {
+          hasPersistedCompaction: true,
+          compactionSummary: latestCompaction.summary,
+          compactionCutoffEventId: latestCompaction.cutoffEventId,
+          compactionTimestamp: latestCompaction.timestamp,
+          recentRawMessageCount: recentMessages.length
+        })
+      };
+    }
 
     if (conversation.length <= recentCount) {
-      return conversation.map(stripTimestamp);
+      const messages = conversation.map(stripTimestamp);
+
+      return {
+        messages,
+        metadata: buildProjectionMetadata(messages, {
+          hasPersistedCompaction: false,
+          recentRawMessageCount: messages.length
+        })
+      };
     }
 
     const oldMessages = conversation.slice(0, -recentCount);
     const recentMessages = conversation.slice(-recentCount);
     const summary = this.buildAnchoredSummary(events, oldMessages);
-
-    return [
+    const messages = [
       {
-        role: "system",
+        role: "system" as const,
         content: summary
       },
       ...recentMessages.map(stripTimestamp)
     ];
+
+    return {
+      messages,
+      metadata: buildProjectionMetadata(messages, {
+        hasPersistedCompaction: false,
+        recentRawMessageCount: recentMessages.length
+      })
+    };
   }
 
   private projectConversation(events: SessionEvent[], currentInputId: string): ConversationMessage[] {
@@ -58,6 +120,7 @@ export class HistoryProjector {
         messages.push({
           role: "user",
           content: asString(event.data.prompt) ?? "",
+          sourceEventId: event.id,
           timestamp: event.timestamp
         });
         continue;
@@ -73,6 +136,7 @@ export class HistoryProjector {
         messages.push({
           role: "assistant",
           content: text,
+          sourceEventId: event.id,
           timestamp: event.timestamp
         });
       }
@@ -118,6 +182,33 @@ export class HistoryProjector {
     ];
 
     return truncate(sections.join("\n"), maxSummaryChars);
+  }
+
+  private mergeSummaryWithOverflow(events: SessionEvent[], previousSummary: string, overflowMessages: ConversationMessage[]) {
+    const overflowSummary = this.buildAnchoredSummary(events, overflowMessages);
+
+    return truncate(
+      [
+        "Session context summary:",
+        "",
+        "## Persisted Summary",
+        previousSummary,
+        "",
+        "## Additional Older Messages Not Yet Persistently Compacted",
+        overflowSummary
+      ].join("\n"),
+      this.options.maxSummaryChars ?? DEFAULT_MAX_SUMMARY_CHARS
+    );
+  }
+
+  private formatPersistedSummary(summary: string) {
+    return [
+      "Persisted session context summary:",
+      "",
+      summary,
+      "",
+      "Use this summary as durable background. Prefer recent raw messages below when they conflict with this summary."
+    ].join("\n");
   }
 
   private extractFileFacts(events: SessionEvent[]): FileFact[] {
@@ -168,6 +259,42 @@ function stripTimestamp(message: ConversationMessage): ModelMessage {
   return {
     role: message.role,
     content: message.content
+  };
+}
+
+function findLatestCompaction(events: SessionEvent[]) {
+  for (const event of [...events].reverse()) {
+    if (event.type !== "session.compaction.ended") {
+      continue;
+    }
+
+    const summary = asString(event.data.summary);
+    const cutoffEventId = asString(event.data.cutoffEventId);
+
+    if (!summary || !cutoffEventId) {
+      continue;
+    }
+
+    return {
+      summary,
+      cutoffEventId,
+      timestamp: event.timestamp
+    };
+  }
+
+  return undefined;
+}
+
+function buildProjectionMetadata(
+  messages: ModelMessage[],
+  metadata: Omit<ContextProjection["metadata"], "projectedChars" | "estimatedTokens">
+): ContextProjection["metadata"] {
+  const projectedChars = messages.reduce((total, message) => total + message.content.length, 0);
+
+  return {
+    ...metadata,
+    projectedChars,
+    estimatedTokens: Math.ceil(projectedChars / 4)
   };
 }
 

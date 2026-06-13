@@ -1,4 +1,5 @@
 import { createId } from "./id";
+import { ContextCompactor } from "./ContextCompactor";
 import { EventLog } from "./EventLog";
 import { HistoryProjector } from "./HistoryProjector";
 import { SessionStore } from "./SessionStore";
@@ -28,6 +29,7 @@ export class SessionRunner {
     private readonly modelClient: ModelClient,
     private readonly toolRegistry: ToolRegistry,
     private readonly historyProjector = new HistoryProjector(),
+    private readonly contextCompactor = new ContextCompactor(eventLog, modelClient),
     private readonly options: SessionRunnerOptions = {}
   ) {}
 
@@ -77,6 +79,16 @@ export class SessionRunner {
 
   private async runActivity(request: SessionRunRequest, signal: AbortSignal) {
     const maxTurns = this.options.maxProviderTurnsPerActivity ?? DEFAULT_MAX_PROVIDER_TURNS;
+    await this.contextCompactor.compactIfNeeded(request.session.id, request.input.id, signal);
+
+    if (signal.aborted) {
+      await this.eventLog.append(request.session.id, "session.interrupt.requested", {
+        inputId: request.input.id
+      });
+      await this.store.updateSessionStatus(request.session.id, "interrupted");
+      return;
+    }
+
     const history = this.historyProjector.project(this.eventLog.allForSession(request.session.id), request.input.id);
     const messages: ModelMessage[] = [
       ...history,
