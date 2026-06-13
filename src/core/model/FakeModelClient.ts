@@ -29,6 +29,18 @@ export class FakeModelClient implements ModelClient {
       return;
     }
 
+    if (isSessionNameRequest(request)) {
+      const response = JSON.stringify({
+        title: "Fake Agent Task",
+        summary: findLastUserMessage(request).replace(/\s+/g, " ").trim().slice(0, 160)
+      });
+      this.debugLogger?.log("Fake model response", {
+        text: response
+      });
+      yield* streamText(response, request.signal, 16, 5);
+      return;
+    }
+
     if (hasToolResultMessages(request)) {
       const response = formatToolResultAnswer(toolResults);
       this.debugLogger?.log("Fake model response", {
@@ -89,6 +101,12 @@ export class FakeModelClient implements ModelClient {
 function isCompactionRequest(request: ModelRequest) {
   return request.messages.some(
     (message) => message.role === "system" && message.content.includes("coding-agent session compactor")
+  );
+}
+
+function isSessionNameRequest(request: ModelRequest) {
+  return request.messages.some(
+    (message) => message.role === "system" && message.content.includes("session metadata")
   );
 }
 

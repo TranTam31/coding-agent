@@ -81,7 +81,8 @@ export function SessionSidebar({
                         title={session.label}
                         onClick={() => onSwitchSession(session.id)}
                       >
-                        <span className="block truncate font-medium">{session.label}</span>
+                        <span className="block truncate font-medium">{session.title}</span>
+                        {session.summary ? <span className="mt-0.5 block truncate text-[11px] text-muted">{session.summary}</span> : null}
                       </button>
 
                       <button

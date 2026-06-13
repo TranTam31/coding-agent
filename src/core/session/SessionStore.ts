@@ -107,6 +107,25 @@ export class SessionStore {
     });
   }
 
+  async updateSessionMetadata(sessionId: string, metadata: { title?: string; summary?: string }) {
+    const now = new Date().toISOString();
+    const snapshot = this.getSnapshot();
+
+    await this.saveSnapshot({
+      ...snapshot,
+      sessions: snapshot.sessions.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              title: metadata.title ?? session.title,
+              summary: metadata.summary ?? session.summary,
+              updatedAt: now
+            }
+          : session
+      )
+    });
+  }
+
   async updateInputStatus(inputId: string, status: SessionInput["status"]) {
     const now = new Date().toISOString();
     const snapshot = this.getSnapshot();

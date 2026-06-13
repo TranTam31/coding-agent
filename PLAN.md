@@ -323,6 +323,9 @@ Expected outcome:
 - Made the Model Providers dialog header sticky so it remains visible while scrolling provider settings.
 - Updated model provider cache behavior so fetching models without required API key/base URL clears stale cached models for that provider before surfacing the configuration error.
 - Verified `npm test` passes.
+- Added AI-generated session metadata. After the first prompt for a default-titled session, `SessionNamer` asks the selected model for `{ title, summary }`, stores it in the session record, appends a `session.updated` event, and refreshes the sidebar when the result arrives.
+- Updated the sidebar to show the generated session title and summary instead of only `New coding task - <date>`.
+- Added a deterministic FakeModelClient path for session naming and verified `npm test` passes.
 
 ## Next Step
 

@@ -12,6 +12,7 @@ export type SessionInputStatus = "admitted" | "promoted" | "cancelled";
 
 export type SessionEventType =
   | "session.created"
+  | "session.updated"
   | "session.input.admitted"
   | "session.input.promoted"
   | "session.step.started"

@@ -10,6 +10,8 @@ export type WebviewEvent = {
 export type WebviewSession = {
   id: string;
   label: string;
+  title: string;
+  summary?: string;
 };
 
 export type WebviewFile = {

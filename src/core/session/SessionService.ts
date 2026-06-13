@@ -51,6 +51,11 @@ export class SessionService {
     return this.store.getCurrentSession();
   }
 
+  async updateSessionMetadata(sessionId: string, metadata: { title?: string; summary?: string }) {
+    await this.store.updateSessionMetadata(sessionId, metadata);
+    await this.eventLog.append(sessionId, "session.updated", metadata);
+  }
+
   async submitPrompt(prompt: string): Promise<SessionSubmitResult> {
     const trimmed = prompt.trim();
 

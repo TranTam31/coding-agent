@@ -12,6 +12,7 @@ import { HistoryProjector } from "./core/session/HistoryProjector";
 import { SessionRunner } from "./core/session/SessionRunner";
 import { SessionService } from "./core/session/SessionService";
 import { SessionStore } from "./core/session/SessionStore";
+import { SessionNamer } from "./core/session/SessionNamer";
 import type { SessionEvent, SessionRecord } from "./core/session/types";
 import { createDefaultToolRegistry } from "./core/tools/defaultTools";
 import { getPrimaryWorkspaceFolder, toRelativePath } from "./core/tools/workspace";
@@ -83,9 +84,10 @@ export function activate(context: vscode.ExtensionContext) {
   const permissionService = new PermissionService(permissionStore, eventLog);
   const toolRegistry = createDefaultToolRegistry(permissionService);
   const sessionRunner = new SessionRunner(sessionStore, eventLog, modelClient, toolRegistry);
+  const sessionNamer = new SessionNamer(modelClient);
 
   const openPanelCommand = vscode.commands.registerCommand("codingAgent.openPanel", () => {
-    AgentPanel.show(context.extensionUri, sessionService, sessionRunner, modelService, permissionService);
+    AgentPanel.show(context.extensionUri, sessionService, sessionRunner, sessionNamer, modelService, permissionService);
   });
 
   context.subscriptions.push(openPanelCommand, eventLog, permissionService, modelDebugLogger);
@@ -99,6 +101,7 @@ class AgentPanel {
   private readonly extensionUri: vscode.Uri;
   private readonly sessionService: SessionService;
   private readonly sessionRunner: SessionRunner;
+  private readonly sessionNamer: SessionNamer;
   private readonly modelService: ModelService;
   private readonly permissionService: PermissionService;
   private readonly historyProjector = new HistoryProjector();
@@ -108,6 +111,7 @@ class AgentPanel {
     extensionUri: vscode.Uri,
     sessionService: SessionService,
     sessionRunner: SessionRunner,
+    sessionNamer: SessionNamer,
     modelService: ModelService,
     permissionService: PermissionService
   ) {
@@ -126,7 +130,7 @@ class AgentPanel {
       }
     );
 
-    AgentPanel.currentPanel = new AgentPanel(panel, extensionUri, sessionService, sessionRunner, modelService, permissionService);
+    AgentPanel.currentPanel = new AgentPanel(panel, extensionUri, sessionService, sessionRunner, sessionNamer, modelService, permissionService);
   }
 
   private constructor(
@@ -134,6 +138,7 @@ class AgentPanel {
     extensionUri: vscode.Uri,
     sessionService: SessionService,
     sessionRunner: SessionRunner,
+    sessionNamer: SessionNamer,
     modelService: ModelService,
     permissionService: PermissionService
   ) {
@@ -141,6 +146,7 @@ class AgentPanel {
     this.extensionUri = extensionUri;
     this.sessionService = sessionService;
     this.sessionRunner = sessionRunner;
+    this.sessionNamer = sessionNamer;
     this.modelService = modelService;
     this.permissionService = permissionService;
     this.panel.webview.html = this.getHtml(this.panel.webview);
@@ -243,6 +249,7 @@ class AgentPanel {
 
       const result = await this.sessionService.submitPrompt(trimmed);
       this.refreshSessionState();
+      this.updateSessionNameInBackground(result.session, result.input.id, trimmed);
       await this.sessionRunner.run({
         session: result.session,
         input: result.input,
@@ -253,6 +260,29 @@ class AgentPanel {
     } finally {
       this.setRunning(false);
     }
+  }
+
+  private updateSessionNameInBackground(session: SessionRecord, inputId: string, prompt: string) {
+    if (session.title !== "New coding task" && session.summary) {
+      return;
+    }
+
+    const abortController = new AbortController();
+
+    void this.sessionNamer
+      .generate({
+        sessionId: session.id,
+        inputId,
+        prompt,
+        signal: abortController.signal
+      })
+      .then(async (result) => {
+        await this.sessionService.updateSessionMetadata(session.id, result);
+        this.refreshSessionState();
+      })
+      .catch(() => {
+        // Naming should never fail the main agent run.
+      });
   }
 
   private async handleInterrupt() {
@@ -554,7 +584,9 @@ function toWebviewSession(session: SessionRecord) {
 
   return {
     id: session.id,
-    label
+    label,
+    title: session.title,
+    summary: session.summary
   };
 }
 
@@ -652,6 +684,7 @@ function getEventKind(event: SessionEvent): "agent" | "error" | "system" | "user
     case "permission.replied":
       return "system";
     case "session.created":
+    case "session.updated":
     case "session.input.promoted":
     case "session.step.started":
     case "session.step.ended":
@@ -665,6 +698,8 @@ function formatSessionEvent(event: SessionEvent) {
   switch (event.type) {
     case "session.created":
       return `Session created (${String(event.data.title ?? "New coding task")}).`;
+    case "session.updated":
+      return `Session renamed: ${String(event.data.title ?? "Untitled session")}.`;
     case "session.input.admitted":
       return String(event.data.prompt ?? "Prompt admitted.");
     case "session.input.promoted":
