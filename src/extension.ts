@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import { resolvePromptContext } from "./core/context/PromptContextResolver";
 import { DynamicModelClient } from "./core/model/DynamicModelClient";
+import { VsCodeModelDebugLogger } from "./core/model/ModelDebugLogger";
 import { ModelService } from "./core/model/ModelService";
 import type { ModelProviderId, ModelRef } from "./core/model/ModelClient";
 import { PermissionService } from "./core/permission/PermissionService";
@@ -65,7 +66,8 @@ export function activate(context: vscode.ExtensionContext) {
   const sessionStore = new SessionStore(context.workspaceState);
   const eventLog = new EventLog(context.workspaceState);
   const sessionService = new SessionService(sessionStore, eventLog, getWorkspaceUri());
-  const modelService = new ModelService(context.secrets, context.workspaceState);
+  const modelDebugLogger = new VsCodeModelDebugLogger();
+  const modelService = new ModelService(context.secrets, context.workspaceState, modelDebugLogger);
   const modelClient = new DynamicModelClient(modelService);
   const permissionStore = new PermissionStore(context.workspaceState);
   const permissionService = new PermissionService(permissionStore, eventLog);
@@ -76,7 +78,7 @@ export function activate(context: vscode.ExtensionContext) {
     AgentPanel.show(context.extensionUri, sessionService, sessionRunner, modelService, permissionService);
   });
 
-  context.subscriptions.push(openPanelCommand, eventLog, permissionService);
+  context.subscriptions.push(openPanelCommand, eventLog, permissionService, modelDebugLogger);
 }
 
 export function deactivate() {}

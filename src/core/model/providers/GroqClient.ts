@@ -6,6 +6,7 @@ import type {
   ModelRequest,
   ModelToolDefinition,
 } from "../ModelClient";
+import type { ModelDebugLogger } from "../ModelDebugLogger";
 import {
   createReadFileToolCalls,
   shouldReadContextFiles,
@@ -84,6 +85,7 @@ export class GroqModelClient implements ModelClient {
   constructor(
     private readonly apiKey: string,
     private readonly modelId: string,
+    private readonly debugLogger?: ModelDebugLogger,
   ) {}
 
   async *stream(request: ModelRequest) {
@@ -122,21 +124,37 @@ export class GroqModelClient implements ModelClient {
   }
 
   private async generate(request: ModelRequest) {
+    const body = {
+      model: this.modelId,
+      messages: toGroqMessages(request.messages),
+      tools: toGroqTools(request.tools),
+    };
+
+    this.debugLogger?.log("Groq provider request", {
+      url: `${GROQ_BASE_URL}/chat/completions`,
+      model: this.modelId,
+      sessionId: request.sessionId,
+      inputId: request.inputId,
+      body,
+    });
+
     const response = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
       method: "POST",
       headers: {
         Authorization: toAuthorizationHeader(this.apiKey),
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model: this.modelId,
-        messages: toGroqMessages(request.messages),
-        tools: toGroqTools(request.tools),
-      }),
+      body: JSON.stringify(body),
       signal: request.signal,
     });
 
     const json = (await response.json()) as GroqChatResponse;
+
+    this.debugLogger?.log("Groq raw response", {
+      status: response.status,
+      ok: response.ok,
+      body: json,
+    });
 
     if (!response.ok) {
       throw new Error(
@@ -146,12 +164,15 @@ export class GroqModelClient implements ModelClient {
 
     const message = json.choices?.[0]?.message;
 
-    return {
+    const result = {
       text: message?.content ?? "",
       toolCalls: (message?.tool_calls ?? [])
         .map((toolCall, index) => toModelToolCall(toolCall, index))
         .filter((toolCall): toolCall is NonNullable<typeof toolCall> => toolCall !== undefined),
     };
+
+    this.debugLogger?.log("Groq normalized response", result);
+    return result;
   }
 }
 

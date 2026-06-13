@@ -1,4 +1,5 @@
 import type { AvailableModel, JsonSchema, ModelClient, ModelMessage, ModelRequest, ModelToolDefinition } from "../ModelClient";
+import type { ModelDebugLogger } from "../ModelDebugLogger";
 import { createReadFileToolCalls, shouldReadContextFiles, streamText } from "../contextTooling";
 import type { ModelProvider, ProviderModelResult } from "./types";
 
@@ -66,7 +67,8 @@ export class GeminiProvider implements ModelProvider {
 export class GeminiModelClient implements ModelClient {
   constructor(
     private readonly apiKey: string,
-    private readonly modelId: string
+    private readonly modelId: string,
+    private readonly debugLogger?: ModelDebugLogger
   ) {}
 
   async *stream(request: ModelRequest) {
@@ -106,19 +108,36 @@ export class GeminiModelClient implements ModelClient {
 
   private async generate(request: ModelRequest) {
     const modelName = this.modelId.startsWith("models/") ? this.modelId : `models/${this.modelId}`;
-    const response = await fetch(`${GEMINI_BASE_URL}/${modelName}:generateContent?key=${encodeURIComponent(this.apiKey)}`, {
+    const url = `${GEMINI_BASE_URL}/${modelName}:generateContent?key=${encodeURIComponent(this.apiKey)}`;
+    const body = {
+      contents: toGeminiContents(request.messages),
+      tools: toGeminiTools(request.tools)
+    };
+
+    this.debugLogger?.log("Gemini provider request", {
+      url: `${GEMINI_BASE_URL}/${modelName}:generateContent?key=[redacted]`,
+      model: this.modelId,
+      sessionId: request.sessionId,
+      inputId: request.inputId,
+      body
+    });
+
+    const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        contents: toGeminiContents(request.messages),
-        tools: toGeminiTools(request.tools)
-      }),
+      body: JSON.stringify(body),
       signal: request.signal
     });
 
     const json = (await response.json()) as GeminiGenerateResponse;
+
+    this.debugLogger?.log("Gemini raw response", {
+      status: response.status,
+      ok: response.ok,
+      body: json
+    });
 
     if (!response.ok) {
       throw new Error(json.error?.message ?? `Gemini generation failed: ${response.status}`);
@@ -126,12 +145,15 @@ export class GeminiModelClient implements ModelClient {
 
     const parts = json.candidates?.[0]?.content?.parts ?? [];
 
-    return {
+    const result = {
       text: parts.map((part) => part.text ?? "").join(""),
       toolCalls: parts
         .map((part, index) => part.functionCall ? toModelToolCall(part.functionCall, index) : undefined)
         .filter((toolCall): toolCall is NonNullable<typeof toolCall> => toolCall !== undefined)
     };
+
+    this.debugLogger?.log("Gemini normalized response", result);
+    return result;
   }
 }
 

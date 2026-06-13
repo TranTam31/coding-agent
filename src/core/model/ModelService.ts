@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { FakeModelClient } from "./FakeModelClient";
+import type { ModelDebugLogger } from "./ModelDebugLogger";
 import type { AvailableModel, ModelClient, ModelProviderId, ModelRef } from "./ModelClient";
 import { GeminiModelClient, GeminiProvider } from "./providers/GeminiClient";
 import { GroqModelClient, GroqProvider } from "./providers/GroqClient";
@@ -15,7 +16,8 @@ export class ModelService {
 
   constructor(
     private readonly secrets: vscode.SecretStorage,
-    private readonly workspaceState: vscode.Memento
+    private readonly workspaceState: vscode.Memento,
+    private readonly debugLogger?: ModelDebugLogger
   ) {
     this.providers.set("gemini", new GeminiProvider());
     this.providers.set("groq", new GroqProvider());
@@ -105,7 +107,7 @@ export class ModelService {
     const selected = this.getSelectedModel();
 
     if (selected.providerId === "fake") {
-      return new FakeModelClient();
+      return new FakeModelClient(this.debugLogger);
     }
 
     const apiKey = await this.getApiKey(selected.providerId);
@@ -115,11 +117,11 @@ export class ModelService {
     }
 
     if (selected.providerId === "gemini") {
-      return new GeminiModelClient(apiKey, selected.modelId);
+      return new GeminiModelClient(apiKey, selected.modelId, this.debugLogger);
     }
 
     if (selected.providerId === "groq") {
-      return new GroqModelClient(apiKey, selected.modelId);
+      return new GroqModelClient(apiKey, selected.modelId, this.debugLogger);
     }
 
     throw new Error(`Unsupported provider: ${selected.providerId}`);

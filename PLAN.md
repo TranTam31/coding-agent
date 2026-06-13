@@ -307,6 +307,7 @@ Expected outcome:
 - Updated Gemini and Groq adapters to parse provider tool-call responses into the common `ModelEvent.tool_call` stream so real models can use the same `SessionRunner` and permission path as the fake model.
 - Verified the project compiles with `npm run compile`.
 - Fixed Gemini tool schema conversion by stripping JSON Schema fields that Gemini's function declaration schema rejects, such as `additionalProperties`, while keeping those fields available for OpenAI-compatible providers like Groq.
+- Added `Coding Agent Model Debug` VS Code output channel. Each model call logs provider request payloads, tool declarations, raw provider responses, and normalized text/tool-call results with API keys redacted.
 
 ## Next Step
 

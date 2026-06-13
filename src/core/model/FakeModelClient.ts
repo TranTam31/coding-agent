@@ -1,26 +1,49 @@
+import type { ModelDebugLogger } from "./ModelDebugLogger";
 import type { ModelClient, ModelEvent, ModelRequest } from "./ModelClient";
 import { createReadFileToolCalls, findLastUserMessage, hasToolResultMessages, shouldReadContextFiles, streamText } from "./contextTooling";
 
 const STREAM_DELAY_MS = 55;
 
 export class FakeModelClient implements ModelClient {
+  constructor(private readonly debugLogger?: ModelDebugLogger) {}
+
   async *stream(request: ModelRequest): AsyncIterable<ModelEvent> {
+    this.debugLogger?.log("Fake model request", {
+      provider: "fake",
+      sessionId: request.sessionId,
+      inputId: request.inputId,
+      messages: request.messages,
+      tools: request.tools,
+      contextFiles: request.contextFiles
+    });
+
     const userPrompt = findLastUserMessage(request);
     const toolResults = request.messages.filter((message) => message.role === "tool");
 
     if (isCompactionRequest(request)) {
-      yield* streamText(formatFakeCompactionSummary(userPrompt), request.signal, 16, 5);
+      const response = formatFakeCompactionSummary(userPrompt);
+      this.debugLogger?.log("Fake model response", {
+        text: response
+      });
+      yield* streamText(response, request.signal, 16, 5);
       return;
     }
 
     if (hasToolResultMessages(request)) {
-      yield* streamText(formatToolResultAnswer(toolResults), request.signal);
+      const response = formatToolResultAnswer(toolResults);
+      this.debugLogger?.log("Fake model response", {
+        text: response
+      });
+      yield* streamText(response, request.signal);
       return;
     }
 
     const mutationToolCall = parseMutationToolCall(userPrompt);
 
     if (mutationToolCall) {
+      this.debugLogger?.log("Fake model response", {
+        toolCalls: [mutationToolCall]
+      });
       yield mutationToolCall;
       yield {
         type: "finish",
@@ -31,6 +54,9 @@ export class FakeModelClient implements ModelClient {
 
     if (shouldReadContextFiles(request)) {
       for (const toolCall of createReadFileToolCalls(request)) {
+        this.debugLogger?.log("Fake model response", {
+          toolCalls: [toolCall]
+        });
         yield toolCall;
       }
 
@@ -53,6 +79,9 @@ export class FakeModelClient implements ModelClient {
       "Next milestones will replace this fake client with tool calls, read-only workspace tools, and then real model adapters. For now, this long fake answer exists to make timing, cancellation, and event replay visible."
     ].join("");
 
+    this.debugLogger?.log("Fake model response", {
+      text: response
+    });
     yield* streamText(response, request.signal, 4, STREAM_DELAY_MS);
   }
 }
