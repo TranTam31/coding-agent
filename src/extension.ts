@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
 import { resolvePromptContext } from "./core/context/PromptContextResolver";
-import { FakeModelClient } from "./core/model/FakeModelClient";
+import { DynamicModelClient } from "./core/model/DynamicModelClient";
+import { ModelService } from "./core/model/ModelService";
+import type { ModelProviderId, ModelRef } from "./core/model/ModelClient";
 import { EventLog } from "./core/session/EventLog";
 import { SessionRunner } from "./core/session/SessionRunner";
 import { SessionService } from "./core/session/SessionService";
@@ -32,18 +34,35 @@ type WebviewMessage =
       type: "file.search";
       query: string;
       requestId: string;
+    }
+  | {
+      type: "model.state.request";
+    }
+  | {
+      type: "provider.apiKey.save";
+      providerId: ModelProviderId;
+      apiKey: string;
+    }
+  | {
+      type: "provider.models.refresh";
+      providerId: ModelProviderId;
+    }
+  | {
+      type: "model.select";
+      model: ModelRef;
     };
 
 export function activate(context: vscode.ExtensionContext) {
   const sessionStore = new SessionStore(context.workspaceState);
   const eventLog = new EventLog(context.workspaceState);
   const sessionService = new SessionService(sessionStore, eventLog, getWorkspaceUri());
-  const modelClient = new FakeModelClient();
+  const modelService = new ModelService(context.secrets, context.workspaceState);
+  const modelClient = new DynamicModelClient(modelService);
   const toolRegistry = createDefaultToolRegistry();
   const sessionRunner = new SessionRunner(sessionStore, eventLog, modelClient, toolRegistry);
 
   const openPanelCommand = vscode.commands.registerCommand("codingAgent.openPanel", () => {
-    AgentPanel.show(context.extensionUri, sessionService, sessionRunner);
+    AgentPanel.show(context.extensionUri, sessionService, sessionRunner, modelService);
   });
 
   context.subscriptions.push(openPanelCommand, eventLog);
@@ -57,9 +76,10 @@ class AgentPanel {
   private readonly extensionUri: vscode.Uri;
   private readonly sessionService: SessionService;
   private readonly sessionRunner: SessionRunner;
+  private readonly modelService: ModelService;
   private disposables: vscode.Disposable[] = [];
 
-  static show(extensionUri: vscode.Uri, sessionService: SessionService, sessionRunner: SessionRunner) {
+  static show(extensionUri: vscode.Uri, sessionService: SessionService, sessionRunner: SessionRunner, modelService: ModelService) {
     if (AgentPanel.currentPanel) {
       AgentPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
       return;
@@ -75,19 +95,21 @@ class AgentPanel {
       }
     );
 
-    AgentPanel.currentPanel = new AgentPanel(panel, extensionUri, sessionService, sessionRunner);
+    AgentPanel.currentPanel = new AgentPanel(panel, extensionUri, sessionService, sessionRunner, modelService);
   }
 
   private constructor(
     panel: vscode.WebviewPanel,
     extensionUri: vscode.Uri,
     sessionService: SessionService,
-    sessionRunner: SessionRunner
+    sessionRunner: SessionRunner,
+    modelService: ModelService
   ) {
     this.panel = panel;
     this.extensionUri = extensionUri;
     this.sessionService = sessionService;
     this.sessionRunner = sessionRunner;
+    this.modelService = modelService;
     this.panel.webview.html = this.getHtml(this.panel.webview);
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
@@ -105,6 +127,7 @@ class AgentPanel {
     switch (message.type) {
       case "ready":
         this.refreshSessionState();
+        void this.sendModelState();
         this.postLiveEvent("system", "Panel ready. Submit a prompt to create durable session events.");
         return;
       case "prompt.submit":
@@ -121,6 +144,18 @@ class AgentPanel {
         return;
       case "file.search":
         void this.searchFiles(message.query, message.requestId);
+        return;
+      case "model.state.request":
+        void this.sendModelState();
+        return;
+      case "provider.apiKey.save":
+        void this.saveProviderApiKey(message.providerId, message.apiKey);
+        return;
+      case "provider.models.refresh":
+        void this.refreshProviderModels(message.providerId);
+        return;
+      case "model.select":
+        void this.selectModel(message.model);
         return;
     }
   }
@@ -245,6 +280,39 @@ class AgentPanel {
 
     this.replaceEvents(this.sessionService.getCurrentSessionEvents());
     this.sendOpenFiles();
+  }
+
+  private async sendModelState(error?: string) {
+    this.panel.webview.postMessage({
+      type: "model.state",
+      providers: await this.modelService.getProviderStates(),
+      modelsByProvider: this.modelService.getCachedModels(),
+      selectedModel: this.modelService.getSelectedModel(),
+      error
+    });
+  }
+
+  private async saveProviderApiKey(providerId: ModelProviderId, apiKey: string) {
+    try {
+      await this.modelService.saveApiKey(providerId, apiKey);
+      await this.sendModelState();
+    } catch (error) {
+      await this.sendModelState(error instanceof Error ? error.message : "Failed to save API key.");
+    }
+  }
+
+  private async refreshProviderModels(providerId: ModelProviderId) {
+    try {
+      await this.modelService.listModels(providerId);
+      await this.sendModelState();
+    } catch (error) {
+      await this.sendModelState(error instanceof Error ? error.message : "Failed to fetch models.");
+    }
+  }
+
+  private async selectModel(model: ModelRef) {
+    await this.modelService.setSelectedModel(model);
+    await this.sendModelState();
   }
 
   private replaceEvents(events: SessionEvent[]) {

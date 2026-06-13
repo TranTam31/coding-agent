@@ -361,6 +361,15 @@ The VS Code UI should call the service layer. The UI must not contain the agent 
 
 This section was checked on 2026-06-12. Free tiers change frequently, so provider support must be implemented as adapters. Do not hardcode the core runtime to one provider.
 
+Provider and model are separate concepts:
+
+- A provider is an API service, such as Google Gemini or Groq.
+- A model is a concrete model ID exposed by that provider.
+- An API key belongs to a provider account/project; it does not by itself select a model.
+- The extension should fetch available models from the provider when possible, then let the user choose one from the model selector.
+- API keys must not be stored in `.env` files or workspace files. This is a user-facing extension, so keys must be stored through VS Code `SecretStorage` or an equivalent secure credential store.
+- Provider settings are for entering API keys and refreshing available models. Model selection should happen in the main composer UI.
+
 ### Default for the prototype: Google Gemini API
 
 Google Gemini API has an official free usage tier and official rate-limit documentation. Rate limits are measured using dimensions such as RPM, TPM, and RPD, and depend on model and project tier. Google states that rate limits can be viewed in AI Studio.

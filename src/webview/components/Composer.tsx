@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import { applyMention, type ActiveMention } from "../lib/mention";
 import type { WebviewFile } from "../types";
 import { ContextFiles } from "./ContextFiles";
@@ -14,6 +14,7 @@ type ComposerProps = {
     mention: ActiveMention;
     results: WebviewFile[];
   };
+  modelSlot: ReactNode;
   onPromptChange(value: string, cursor: number): void;
   onPromptReplace(value: string, cursor: number): void;
   onSubmit(): void;
@@ -28,6 +29,7 @@ export function Composer({
   openFiles,
   isRunning,
   suggestion,
+  modelSlot,
   onPromptChange,
   onPromptReplace,
   onSubmit,
@@ -39,7 +41,7 @@ export function Composer({
 
   return (
     <form
-      className="grid grid-cols-[minmax(0,1fr)_36px] items-end gap-2 border-t border-agent bg-agent-soft px-4 py-3"
+      className="grid grid-cols-1 gap-2 border-t border-agent bg-agent-soft px-4 py-3"
       onSubmit={(event) => {
         event.preventDefault();
         isRunning ? onInterrupt() : onSubmit();
@@ -80,9 +82,12 @@ export function Composer({
         />
       </div>
 
-      <button className="icon-button h-8 w-9" type="submit" title={isRunning ? "Interrupt" : "Submit"} aria-label={isRunning ? "Interrupt" : "Submit"}>
-        {isRunning ? <StopIcon /> : <SendIcon />}
-      </button>
+      <div className="grid grid-cols-[minmax(0,1fr)_36px] items-center gap-2">
+        {modelSlot}
+        <button className="icon-button h-8 w-9" type="submit" title={isRunning ? "Interrupt" : "Submit"} aria-label={isRunning ? "Interrupt" : "Submit"}>
+          {isRunning ? <StopIcon /> : <SendIcon />}
+        </button>
+      </div>
     </form>
   );
 }

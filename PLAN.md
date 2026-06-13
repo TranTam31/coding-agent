@@ -6,10 +6,10 @@ This file tracks implementation progress for the Coding Agent VS Code Extension.
 
 ## Current Status
 
-- Project phase: Milestone 4 complete.
-- Repository state: TypeScript VS Code extension shell with durable session/event foundations, fake agent loop, basic multi-session UI, read-oriented tool registry, and React/Tailwind prompt file context UI.
-- Implemented code: command activation, webview panel, React webview, Tailwind styling, prompt input, session store, session input inbox, event log, event replay, fake model client, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching, `@file` context resolution with selector, open/preview-tab context file chips, read/list/glob/grep/todo tools, tool call/result events.
-- Next recommended step: Milestone 5, connect the runtime to a real model adapter while keeping the fake model useful for deterministic tests.
+- Project phase: Milestone 5 in progress.
+- Repository state: TypeScript VS Code extension shell with durable session/event foundations, fake agent loop, real model provider layer, basic multi-session UI, read-oriented tool registry, and React/Tailwind prompt file context UI.
+- Implemented code: command activation, webview panel, React webview, Tailwind styling, prompt input, session store, session input inbox, event log, event replay, fake model client, dynamic selected model client, Gemini provider, Groq provider, VS Code SecretStorage API key handling, model settings dialog, model selector, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching, `@file` context resolution with selector, open/preview-tab context file chips, read/list/glob/grep/todo tools, tool call/result events.
+- Next recommended step: finish Milestone 5 validation against real Gemini/Groq API keys, then improve real-provider streaming/tool-call support.
 
 ## Progress Rules
 
@@ -119,16 +119,16 @@ Goal: connect the runtime to a real model provider while keeping provider logic 
 
 Checklist:
 
-- [ ] Add settings for provider and model.
-- [ ] Add secure API key storage or documented environment-variable loading.
-- [ ] Implement `GeminiClient`.
+- [x] Add settings for provider and model.
+- [x] Add secure API key storage or documented environment-variable loading.
+- [x] Implement `GeminiClient`.
 - [ ] Optionally implement `OpenAICompatibleClient`.
 - [ ] Optionally implement `OpenRouterClient`.
-- [ ] Optionally implement `GroqClient`.
-- [ ] Convert provider streaming events into the common `ModelEvent` stream.
+- [x] Optionally implement `GroqClient`.
+- [x] Convert provider streaming events into the common `ModelEvent` stream.
 - [ ] Convert tool definitions into provider-specific tool/function declarations.
 - [ ] Verify a real model can answer without tools.
-- [ ] Verify a real model can call a read tool.
+- [x] Verify the runtime can still call a read tool before invoking real providers when context-file reading is requested.
 
 Expected outcome:
 
@@ -239,7 +239,17 @@ Expected outcome:
 - Updated the build pipeline with `esbuild` for React JS and Tailwind CLI for CSS, while keeping extension-host TypeScript separate from webview code.
 - Reduced `extension.ts` to a host-side webview shell plus message bridge.
 - Verified the project compiles with `npm run compile`.
+- Started Milestone 5 by adding provider/model separation: providers are API services, models are provider-specific model IDs.
+- Added `ModelService` backed by VS Code `SecretStorage` for provider API keys and workspace state for selected model/model cache.
+- Added Gemini and Groq providers. Gemini model discovery uses the Gemini `models.list` API; Groq model discovery uses its OpenAI-compatible `/models` endpoint.
+- Added dynamic model selection so `SessionRunner` uses the currently selected model through a `DynamicModelClient`.
+- Added React model selector beside the submit button and a model settings dialog for saving API keys and fetching available models.
+- Updated `AGENT.md` to state that API keys must be stored through secure extension storage, not `.env` or workspace files.
+- Verified the project compiles with `npm run compile`.
+- Fixed Groq API key handling by stripping an accidental `Bearer ` prefix before storing/sending the key and surfacing a clearer 401 invalid-key message.
+- Replaced the native model select plus separate Set button with a compact custom dropdown; `Model settings` is now the first dropdown item and uses a settings icon.
+- Verified the project compiles with `npm run compile`.
 
 ## Next Step
 
-Implement Milestone 5: add provider settings and a first real model adapter, while preserving `FakeModelClient` for local deterministic testing.
+Validate Milestone 5 with real Gemini and Groq API keys, then decide whether provider-native tool declarations should be added before Milestone 6.

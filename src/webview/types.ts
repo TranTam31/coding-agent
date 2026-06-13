@@ -19,6 +19,29 @@ export type WebviewFile = {
   isPreview?: boolean;
 };
 
+export type ModelProviderId = "fake" | "gemini" | "groq";
+
+export type ModelRef = {
+  providerId: ModelProviderId;
+  modelId: string;
+};
+
+export type ProviderState = {
+  id: ModelProviderId;
+  label: string;
+  requiresApiKey: boolean;
+  configured: boolean;
+};
+
+export type AvailableModel = {
+  providerId: ModelProviderId;
+  id: string;
+  label: string;
+  description?: string;
+  inputTokenLimit?: number;
+  outputTokenLimit?: number;
+};
+
 export type HostToWebviewMessage =
   | {
       type: "events.replace";
@@ -56,6 +79,13 @@ export type HostToWebviewMessage =
       type: "file.search.results";
       requestId: string;
       results: WebviewFile[];
+    }
+  | {
+      type: "model.state";
+      providers: ProviderState[];
+      modelsByProvider: Partial<Record<ModelProviderId, AvailableModel[]>>;
+      selectedModel: ModelRef;
+      error?: string;
     };
 
 export type WebviewToHostMessage =
@@ -81,4 +111,20 @@ export type WebviewToHostMessage =
       type: "file.search";
       query: string;
       requestId: string;
+    }
+  | {
+      type: "model.state.request";
+    }
+  | {
+      type: "provider.apiKey.save";
+      providerId: ModelProviderId;
+      apiKey: string;
+    }
+  | {
+      type: "provider.models.refresh";
+      providerId: ModelProviderId;
+    }
+  | {
+      type: "model.select";
+      model: ModelRef;
     };

@@ -8,6 +8,22 @@ export type PromptContextFile = {
   source: "mention" | "attached";
 };
 
+export type ModelProviderId = "fake" | "gemini" | "groq";
+
+export type ModelRef = {
+  providerId: ModelProviderId;
+  modelId: string;
+};
+
+export type AvailableModel = {
+  providerId: ModelProviderId;
+  id: string;
+  label: string;
+  description?: string;
+  inputTokenLimit?: number;
+  outputTokenLimit?: number;
+};
+
 export type ModelRequest = {
   sessionId: string;
   inputId: string;

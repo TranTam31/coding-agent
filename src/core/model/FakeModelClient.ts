@@ -1,27 +1,21 @@
 import type { ModelClient, ModelEvent, ModelRequest } from "./ModelClient";
+import { createReadFileToolCalls, findLastUserMessage, hasToolResultMessages, shouldReadContextFiles, streamText } from "./contextTooling";
 
 const STREAM_DELAY_MS = 55;
 
 export class FakeModelClient implements ModelClient {
   async *stream(request: ModelRequest): AsyncIterable<ModelEvent> {
-    const userPrompt = findLastUserMessage(request.messages);
+    const userPrompt = findLastUserMessage(request);
     const toolResults = request.messages.filter((message) => message.role === "tool");
 
-    if (toolResults.length > 0) {
+    if (hasToolResultMessages(request)) {
       yield* streamText(formatReadFileAnswer(toolResults), request.signal);
       return;
     }
 
-    if (shouldReadFiles(userPrompt) && request.contextFiles.length > 0) {
-      for (const contextFile of request.contextFiles) {
-        yield {
-          type: "tool_call",
-          id: `fake_read_${contextFile.path}`,
-          name: "read_file",
-          input: {
-            path: contextFile.path
-          }
-        };
+    if (shouldReadContextFiles(request)) {
+      for (const toolCall of createReadFileToolCalls(request)) {
+        yield toolCall;
       }
 
       yield {
@@ -42,45 +36,8 @@ export class FakeModelClient implements ModelClient {
       "Next milestones will replace this fake client with tool calls, read-only workspace tools, and then real model adapters. For now, this long fake answer exists to make timing, cancellation, and event replay visible."
     ].join("");
 
-    yield* streamText(response, request.signal);
+    yield* streamText(response, request.signal, 4, STREAM_DELAY_MS);
   }
-}
-
-async function* streamText(text: string, signal: AbortSignal): AsyncIterable<ModelEvent> {
-  for (const delta of chunkText(text, 4)) {
-    if (signal.aborted) {
-      yield {
-        type: "finish",
-        reason: "cancelled"
-      };
-      return;
-    }
-
-    await delay(STREAM_DELAY_MS, signal);
-
-    if (signal.aborted) {
-      yield {
-        type: "finish",
-        reason: "cancelled"
-      };
-      return;
-    }
-
-    yield {
-      type: "text_delta",
-      delta
-    };
-  }
-
-  yield {
-    type: "finish",
-    reason: "stop"
-  };
-}
-
-function shouldReadFiles(prompt: string) {
-  const normalized = prompt.toLowerCase();
-  return normalized.includes("read file") || normalized.includes("doc file") || normalized.includes("đọc file");
 }
 
 function formatReadFileAnswer(toolResults: ModelRequest["messages"]) {
@@ -114,44 +71,4 @@ function parseToolMessage(content: string) {
       content
     };
   }
-}
-
-function chunkText(text: string, size: number) {
-  const chunks: string[] = [];
-
-  for (let index = 0; index < text.length; index += size) {
-    chunks.push(text.slice(index, index + size));
-  }
-
-  return chunks;
-}
-
-function findLastUserMessage(messages: ModelRequest["messages"]) {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    if (messages[index]?.role === "user") {
-      return messages[index].content;
-    }
-  }
-
-  return "";
-}
-
-function delay(ms: number, signal: AbortSignal) {
-  return new Promise<void>((resolve) => {
-    if (signal.aborted) {
-      resolve();
-      return;
-    }
-
-    const timeout = setTimeout(resolve, ms);
-
-    signal.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timeout);
-        resolve();
-      },
-      { once: true }
-    );
-  });
 }
