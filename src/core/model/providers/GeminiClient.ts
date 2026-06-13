@@ -1,7 +1,7 @@
 import type { AvailableModel, JsonSchema, ModelClient, ModelMessage, ModelRequest, ModelToolDefinition } from "../ModelClient";
 import type { ModelDebugLogger } from "../ModelDebugLogger";
 import { createReadFileToolCalls, shouldReadContextFiles, streamText } from "../contextTooling";
-import type { ModelProvider, ProviderModelResult } from "./types";
+import type { ModelProvider, ProviderConfig, ProviderModelResult } from "./types";
 
 const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 
@@ -44,7 +44,9 @@ export class GeminiProvider implements ModelProvider {
     requiresApiKey: true
   };
 
-  async listModels(apiKey?: string): Promise<ProviderModelResult> {
+  async listModels(config: ProviderConfig): Promise<ProviderModelResult> {
+    const apiKey = config.apiKey;
+
     if (!apiKey) {
       throw new Error("Gemini API key is required.");
     }

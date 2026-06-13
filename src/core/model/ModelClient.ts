@@ -24,7 +24,7 @@ export type PromptContextFile = {
   source: "mention" | "attached";
 };
 
-export type ModelProviderId = "fake" | "gemini" | "groq";
+export type ModelProviderId = "fake" | "gemini" | "groq" | "ollama";
 
 export type ModelRef = {
   providerId: ModelProviderId;

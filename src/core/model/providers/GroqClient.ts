@@ -12,7 +12,7 @@ import {
   shouldReadContextFiles,
   streamText,
 } from "../contextTooling";
-import type { ModelProvider, ProviderModelResult } from "./types";
+import type { ModelProvider, ProviderConfig, ProviderModelResult } from "./types";
 
 const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
 
@@ -50,7 +50,9 @@ export class GroqProvider implements ModelProvider {
     requiresApiKey: true,
   };
 
-  async listModels(apiKey?: string): Promise<ProviderModelResult> {
+  async listModels(config: ProviderConfig): Promise<ProviderModelResult> {
+    const apiKey = config.apiKey;
+
     if (!apiKey) {
       throw new Error("Groq API key is required.");
     }

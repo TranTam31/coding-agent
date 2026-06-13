@@ -8,7 +8,7 @@ This file tracks implementation progress for the Coding Agent VS Code Extension.
 
 - Project phase: Milestone 6 in progress.
 - Repository state: TypeScript VS Code extension shell with durable session/event foundations, session history projection, fake agent loop, real model provider layer, basic multi-session UI, read-oriented tool registry, and React/Tailwind prompt file context UI.
-- Implemented code: command activation, webview panel, React webview, Tailwind styling, prompt input, session store, session input inbox, event log, event replay, history projector, persistent context compactor, fake model client, dynamic selected model client, Gemini provider, Groq provider, VS Code SecretStorage API key handling, model settings dialog, model selector, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching, `@file` context resolution with selector, open/preview-tab context file chips, read/list/glob/grep/todo tools, mutation tools, permission service/store, approval UI, tool call/result events.
+- Implemented code: command activation, webview panel, React webview, Tailwind styling, prompt input, session store, session input inbox, event log, event replay, history projector, persistent context compactor, fake model client, dynamic selected model client, Gemini provider, Groq provider, Ollama provider, VS Code SecretStorage API key/token handling, provider endpoint config, model settings dialog, model selector, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching, `@file` context resolution with selector, open/preview-tab context file chips, read/list/glob/grep/todo tools, mutation tools, permission service/store, approval UI, tool call/result events.
 - Next recommended step: validate provider-native tool calling with real Gemini and Groq models, then harden patch partial-failure reporting and add tests.
 
 ## Progress Rules
@@ -308,7 +308,9 @@ Expected outcome:
 - Verified the project compiles with `npm run compile`.
 - Fixed Gemini tool schema conversion by stripping JSON Schema fields that Gemini's function declaration schema rejects, such as `additionalProperties`, while keeping those fields available for OpenAI-compatible providers like Groq.
 - Added `Coding Agent Model Debug` VS Code output channel. Each model call logs provider request payloads, tool declarations, raw provider responses, and normalized text/tool-call results with API keys redacted.
+- Added Ollama provider support for self-hosted endpoints such as Kaggle-hosted Ollama. Provider settings now support base URLs in workspace state plus optional bearer tokens in VS Code SecretStorage. Ollama lists models via `/api/tags`, calls models through `/api/chat`, and maps Ollama `tool_calls` into the common runner tool-call path.
+- Added an Ollama compatibility parser for models/templates that emit text-form tool calls such as `<function=write_file><parameter=path>...</parameter></function>` instead of native `message.tool_calls`.
 
 ## Next Step
 
-Validate provider-native tool calling with real Gemini and Groq models, then harden patch partial-failure reporting and add tests for `edit_file`.
+Validate provider-native tool calling with real Gemini, Groq, and Ollama models, then harden patch partial-failure reporting and add tests for `edit_file`.

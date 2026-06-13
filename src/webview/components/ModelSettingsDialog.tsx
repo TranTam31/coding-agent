@@ -8,6 +8,7 @@ type ModelSettingsDialogProps = {
   error?: string;
   onClose(): void;
   onSaveApiKey(providerId: ModelProviderId, apiKey: string): void;
+  onSaveProviderConfig(providerId: ModelProviderId, config: { apiKey?: string; baseUrl?: string }): void;
   onRefreshModels(providerId: ModelProviderId): void;
 };
 
@@ -18,9 +19,11 @@ export function ModelSettingsDialog({
   error,
   onClose,
   onSaveApiKey,
+  onSaveProviderConfig,
   onRefreshModels
 }: ModelSettingsDialogProps) {
   const [keys, setKeys] = useState<Partial<Record<ModelProviderId, string>>>({});
+  const [baseUrls, setBaseUrls] = useState<Partial<Record<ModelProviderId, string>>>({});
 
   if (!open) {
     return null;
@@ -50,19 +53,42 @@ export function ModelSettingsDialog({
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <div>
                     <h3 className="m-0 text-sm font-semibold">{provider.label}</h3>
-                    <p className="mt-1 text-xs text-muted">{provider.requiresApiKey ? (provider.configured ? "API key configured" : "API key required") : "No API key required"}</p>
+                    <p className="mt-1 text-xs text-muted">
+                      {provider.configured ? "Configured" : provider.requiresBaseUrl ? "Endpoint required" : provider.requiresApiKey ? "API key required" : "No configuration required"}
+                    </p>
                   </div>
                   <button className="icon-button px-2 text-xs" type="button" onClick={() => onRefreshModels(provider.id)}>
                     Fetch models
                   </button>
                 </div>
 
-                {provider.requiresApiKey ? (
-                  <div className="mb-3 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+                {provider.requiresBaseUrl || provider.requiresApiKey ? (
+                  <div className="mb-3 grid gap-2">
+                    {provider.requiresBaseUrl ? (
+                      <input
+                        className="h-8 min-w-0 rounded border border-agent bg-[var(--vscode-input-background)] px-2 text-[var(--vscode-input-foreground)] outline-none"
+                        type="url"
+                        placeholder={provider.baseUrl || "Ollama base URL, e.g. https://your-tunnel.trycloudflare.com"}
+                        value={baseUrls[provider.id] ?? ""}
+                        onChange={(event) =>
+                          setBaseUrls((current) => ({
+                            ...current,
+                            [provider.id]: event.target.value
+                          }))
+                        }
+                      />
+                    ) : null}
+
                     <input
                       className="h-8 min-w-0 rounded border border-agent bg-[var(--vscode-input-background)] px-2 text-[var(--vscode-input-foreground)] outline-none"
                       type="password"
-                      placeholder={provider.configured ? "Enter a new key to replace the saved key" : "Paste API key"}
+                      placeholder={
+                        provider.requiresApiKey
+                          ? provider.configured
+                            ? "Enter a new key to replace the saved key"
+                            : "Paste API key"
+                          : "Optional bearer token if your tunnel/proxy requires it"
+                      }
                       value={keys[provider.id] ?? ""}
                       onChange={(event) =>
                         setKeys((current) => ({
@@ -71,7 +97,21 @@ export function ModelSettingsDialog({
                         }))
                       }
                     />
-                    <button className="icon-button px-3 text-xs" type="button" onClick={() => onSaveApiKey(provider.id, keys[provider.id] ?? "")}>
+                    <button
+                      className="icon-button px-3 text-xs"
+                      type="button"
+                      onClick={() => {
+                        if (provider.requiresBaseUrl) {
+                          onSaveProviderConfig(provider.id, {
+                            apiKey: keys[provider.id],
+                            baseUrl: baseUrls[provider.id] ?? provider.baseUrl ?? ""
+                          });
+                          return;
+                        }
+
+                        onSaveApiKey(provider.id, keys[provider.id] ?? "");
+                      }}
+                    >
                       Save
                     </button>
                   </div>

@@ -174,6 +174,7 @@ export function App() {
         error={modelError}
         onClose={() => setSettingsOpen(false)}
         onSaveApiKey={(providerId, apiKey) => vscode.postMessage({ type: "provider.apiKey.save", providerId, apiKey })}
+        onSaveProviderConfig={(providerId, config) => vscode.postMessage({ type: "provider.config.save", providerId, ...config })}
         onRefreshModels={(providerId) => vscode.postMessage({ type: "provider.models.refresh", providerId })}
       />
     </main>

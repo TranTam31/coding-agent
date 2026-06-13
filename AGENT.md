@@ -369,9 +369,11 @@ Provider and model are separate concepts:
 
 - A provider is an API service, such as Google Gemini or Groq.
 - A model is a concrete model ID exposed by that provider.
+- For self-hosting, `Ollama` is the provider and the hosted endpoint URL is provider configuration; models are names returned by Ollama, such as `qwen2.5-coder:7b`.
 - An API key belongs to a provider account/project; it does not by itself select a model.
 - The extension should fetch available models from the provider when possible, then let the user choose one from the model selector.
 - API keys must not be stored in `.env` files or workspace files. This is a user-facing extension, so keys must be stored through VS Code `SecretStorage` or an equivalent secure credential store.
+- Provider endpoint URLs may be stored in workspace state. Optional bearer tokens for private tunnels must be stored through VS Code `SecretStorage`.
 - Provider settings are for entering API keys and refreshing available models. Model selection should happen in the main composer UI.
 
 ### Default for the prototype: Google Gemini API

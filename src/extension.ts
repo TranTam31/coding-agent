@@ -49,6 +49,12 @@ type WebviewMessage =
       apiKey: string;
     }
   | {
+      type: "provider.config.save";
+      providerId: ModelProviderId;
+      apiKey?: string;
+      baseUrl?: string;
+    }
+  | {
       type: "provider.models.refresh";
       providerId: ModelProviderId;
     }
@@ -174,6 +180,12 @@ class AgentPanel {
         return;
       case "provider.apiKey.save":
         void this.saveProviderApiKey(message.providerId, message.apiKey);
+        return;
+      case "provider.config.save":
+        void this.saveProviderConfig(message.providerId, {
+          apiKey: message.apiKey,
+          baseUrl: message.baseUrl
+        });
         return;
       case "provider.models.refresh":
         void this.refreshProviderModels(message.providerId);
@@ -374,6 +386,15 @@ class AgentPanel {
       await this.sendModelState();
     } catch (error) {
       await this.sendModelState(error instanceof Error ? error.message : "Failed to save API key.");
+    }
+  }
+
+  private async saveProviderConfig(providerId: ModelProviderId, config: { apiKey?: string; baseUrl?: string }) {
+    try {
+      await this.modelService.saveProviderConfig(providerId, config);
+      await this.sendModelState();
+    } catch (error) {
+      await this.sendModelState(error instanceof Error ? error.message : "Failed to save provider config.");
     }
   }
 

@@ -4,12 +4,15 @@ import type { ModelDebugLogger } from "./ModelDebugLogger";
 import type { AvailableModel, ModelClient, ModelProviderId, ModelRef } from "./ModelClient";
 import { GeminiModelClient, GeminiProvider } from "./providers/GeminiClient";
 import { GroqModelClient, GroqProvider } from "./providers/GroqClient";
+import { OllamaModelClient, OllamaProvider } from "./providers/OllamaClient";
 import type { ModelProvider, ProviderInfo } from "./providers/types";
 
 const SELECTED_MODEL_KEY = "codingAgent.selectedModel.v1";
 const MODEL_CACHE_KEY = "codingAgent.modelCache.v1";
+const PROVIDER_CONFIG_KEY = "codingAgent.providerConfig.v1";
 
 type ModelCache = Partial<Record<ModelProviderId, AvailableModel[]>>;
+type ProviderConfigCache = Partial<Record<ModelProviderId, { baseUrl?: string }>>;
 
 export class ModelService {
   private readonly providers = new Map<ModelProviderId, ModelProvider>();
@@ -21,6 +24,7 @@ export class ModelService {
   ) {
     this.providers.set("gemini", new GeminiProvider());
     this.providers.set("groq", new GroqProvider());
+    this.providers.set("ollama", new OllamaProvider());
   }
 
   getProviders(): ProviderInfo[] {
@@ -40,7 +44,8 @@ export class ModelService {
     return Promise.all(
       providers.map(async (provider) => ({
         ...provider,
-        configured: provider.id === "fake" ? true : Boolean(await this.getApiKey(provider.id))
+        configured: await this.isConfigured(provider),
+        baseUrl: this.getProviderConfig(provider.id).baseUrl
       }))
     );
   }
@@ -80,6 +85,24 @@ export class ModelService {
     await this.secrets.store(this.getSecretKey(providerId), trimmed);
   }
 
+  async saveProviderConfig(providerId: ModelProviderId, config: { apiKey?: string; baseUrl?: string }) {
+    if (config.apiKey !== undefined) {
+      await this.saveApiKey(providerId, config.apiKey);
+    }
+
+    if (config.baseUrl !== undefined) {
+      const cache = this.getProviderConfigCache();
+
+      await this.workspaceState.update(PROVIDER_CONFIG_KEY, {
+        ...cache,
+        [providerId]: {
+          ...cache[providerId],
+          baseUrl: config.baseUrl.trim()
+        }
+      });
+    }
+  }
+
   async listModels(providerId: ModelProviderId): Promise<AvailableModel[]> {
     if (providerId === "fake") {
       return [getFakeModel()];
@@ -91,8 +114,10 @@ export class ModelService {
       throw new Error(`Unknown provider: ${providerId}`);
     }
 
-    const apiKey = await this.getApiKey(providerId);
-    const result = await provider.listModels(apiKey);
+    const result = await provider.listModels({
+      apiKey: await this.getApiKey(providerId),
+      baseUrl: this.getProviderConfig(providerId).baseUrl
+    });
     const cache = this.getCachedModels();
 
     await this.workspaceState.update(MODEL_CACHE_KEY, {
@@ -112,16 +137,24 @@ export class ModelService {
 
     const apiKey = await this.getApiKey(selected.providerId);
 
-    if (!apiKey) {
-      throw new Error(`Missing API key for provider: ${selected.providerId}`);
-    }
-
     if (selected.providerId === "gemini") {
+      if (!apiKey) {
+        throw new Error("Missing API key for provider: gemini");
+      }
+
       return new GeminiModelClient(apiKey, selected.modelId, this.debugLogger);
     }
 
     if (selected.providerId === "groq") {
+      if (!apiKey) {
+        throw new Error("Missing API key for provider: groq");
+      }
+
       return new GroqModelClient(apiKey, selected.modelId, this.debugLogger);
+    }
+
+    if (selected.providerId === "ollama") {
+      return new OllamaModelClient(this.getProviderConfig("ollama").baseUrl ?? "", apiKey, selected.modelId, this.debugLogger);
     }
 
     throw new Error(`Unsupported provider: ${selected.providerId}`);
@@ -133,6 +166,30 @@ export class ModelService {
     }
 
     return this.secrets.get(this.getSecretKey(providerId));
+  }
+
+  private getProviderConfig(providerId: ModelProviderId) {
+    return this.getProviderConfigCache()[providerId] ?? {};
+  }
+
+  private getProviderConfigCache() {
+    return this.workspaceState.get<ProviderConfigCache>(PROVIDER_CONFIG_KEY, {});
+  }
+
+  private async isConfigured(provider: ProviderInfo) {
+    if (provider.id === "fake") {
+      return true;
+    }
+
+    if (provider.requiresApiKey && !await this.getApiKey(provider.id)) {
+      return false;
+    }
+
+    if (provider.requiresBaseUrl && !this.getProviderConfig(provider.id).baseUrl) {
+      return false;
+    }
+
+    return true;
   }
 
   private getSecretKey(providerId: ModelProviderId) {

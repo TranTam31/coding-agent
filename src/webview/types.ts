@@ -19,7 +19,7 @@ export type WebviewFile = {
   isPreview?: boolean;
 };
 
-export type ModelProviderId = "fake" | "gemini" | "groq";
+export type ModelProviderId = "fake" | "gemini" | "groq" | "ollama";
 
 export type ModelRef = {
   providerId: ModelProviderId;
@@ -30,7 +30,9 @@ export type ProviderState = {
   id: ModelProviderId;
   label: string;
   requiresApiKey: boolean;
+  requiresBaseUrl?: boolean;
   configured: boolean;
+  baseUrl?: string;
 };
 
 export type AvailableModel = {
@@ -133,6 +135,12 @@ export type WebviewToHostMessage =
       type: "provider.apiKey.save";
       providerId: ModelProviderId;
       apiKey: string;
+    }
+  | {
+      type: "provider.config.save";
+      providerId: ModelProviderId;
+      apiKey?: string;
+      baseUrl?: string;
     }
   | {
       type: "provider.models.refresh";
