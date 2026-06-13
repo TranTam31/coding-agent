@@ -63,4 +63,78 @@
     cursor: default;
     opacity: 0.6;
   }
+
+  .markdown-message {
+    overflow-wrap: anywhere;
+    line-height: 1.55;
+  }
+
+  .markdown-message > :first-child {
+    margin-top: 0;
+  }
+
+  .markdown-message > :last-child {
+    margin-bottom: 0;
+  }
+
+  .markdown-message p {
+    margin: 0.45rem 0;
+  }
+
+  .markdown-message ul,
+  .markdown-message ol {
+    margin: 0.45rem 0;
+    padding-left: 1.25rem;
+  }
+
+  .markdown-message li {
+    margin: 0.18rem 0;
+  }
+
+  .markdown-message code {
+    border-radius: 4px;
+    padding: 0.1rem 0.25rem;
+    background: var(--vscode-textCodeBlock-background);
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-size: 0.92em;
+  }
+
+  .markdown-message pre {
+    margin: 0.6rem 0;
+    overflow-x: auto;
+    border: 1px solid var(--vscode-panel-border);
+    border-radius: 6px;
+    padding: 0.75rem;
+    background: var(--vscode-textCodeBlock-background);
+  }
+
+  .markdown-message pre code {
+    padding: 0;
+    background: transparent;
+  }
+
+  .markdown-message blockquote {
+    margin: 0.6rem 0;
+    border-left: 3px solid var(--vscode-panel-border);
+    padding-left: 0.75rem;
+    color: var(--vscode-descriptionForeground);
+  }
+
+  .markdown-message table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    border-collapse: collapse;
+    margin: 0.6rem 0;
+  }
+
+  .markdown-message th,
+  .markdown-message td {
+    border: 1px solid var(--vscode-panel-border);
+    padding: 0.35rem 0.5rem;
+  }
+
+  .markdown-message a {
+    color: var(--vscode-textLink-foreground);
+  }
 }

@@ -9,7 +9,7 @@ This file tracks implementation progress for the Coding Agent VS Code Extension.
 - Project phase: Milestone 5 in progress.
 - Repository state: TypeScript VS Code extension shell with durable session/event foundations, fake agent loop, real model provider layer, basic multi-session UI, read-oriented tool registry, and React/Tailwind prompt file context UI.
 - Implemented code: command activation, webview panel, React webview, Tailwind styling, prompt input, session store, session input inbox, event log, event replay, fake model client, dynamic selected model client, Gemini provider, Groq provider, VS Code SecretStorage API key handling, model settings dialog, model selector, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching, `@file` context resolution with selector, open/preview-tab context file chips, read/list/glob/grep/todo tools, tool call/result events.
-- Next recommended step: finish Milestone 5 validation against real Gemini/Groq API keys, then improve real-provider streaming/tool-call support.
+- Next recommended step: finish Milestone 5 by validating Groq with a real key and deciding whether provider-native tool declarations are needed before file mutation work.
 
 ## Progress Rules
 
@@ -127,7 +127,7 @@ Checklist:
 - [x] Optionally implement `GroqClient`.
 - [x] Convert provider streaming events into the common `ModelEvent` stream.
 - [ ] Convert tool definitions into provider-specific tool/function declarations.
-- [ ] Verify a real model can answer without tools.
+- [x] Verify a real model can answer without tools.
 - [x] Verify the runtime can still call a read tool before invoking real providers when context-file reading is requested.
 
 Expected outcome:
@@ -248,6 +248,9 @@ Expected outcome:
 - Verified the project compiles with `npm run compile`.
 - Fixed Groq API key handling by stripping an accidental `Bearer ` prefix before storing/sending the key and surfacing a clearer 401 invalid-key message.
 - Replaced the native model select plus separate Set button with a compact custom dropdown; `Model settings` is now the first dropdown item and uses a settings icon.
+- Verified the project compiles with `npm run compile`.
+- Confirmed through manual user testing that Gemini can answer through the real provider adapter.
+- Added Markdown rendering for model responses in the React webview using `react-markdown` and `remark-gfm`, including code blocks, inline code, lists, tables, blockquotes, and links.
 - Verified the project compiles with `npm run compile`.
 
 ## Next Step

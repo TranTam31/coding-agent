@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import type { WebviewEvent } from "../types";
+import { MarkdownMessage } from "./MarkdownMessage";
 
 type EventListProps = {
   events: WebviewEvent[];
@@ -25,7 +26,7 @@ export function EventList({ events }: EventListProps) {
             <span>-</span>
             <span>{new Date(event.timestamp).toLocaleTimeString()}</span>
           </div>
-          <p className="m-0 whitespace-pre-wrap break-words leading-6">{event.text}</p>
+          <MarkdownMessage text={event.text} />
         </article>
       ))}
     </section>
