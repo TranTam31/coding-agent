@@ -24,6 +24,28 @@ export class SessionService {
     return session ? this.eventLog.allForSession(session.id) : [];
   }
 
+  getSessions(): SessionRecord[] {
+    return this.store.getSessions();
+  }
+
+  async createNewSession(): Promise<SessionRecord> {
+    const session = await this.store.createSession(this.workspaceUri);
+
+    await this.eventLog.append(session.id, "session.created", {
+      title: session.title,
+      workspaceUri: session.workspaceUri,
+      agentId: session.agentId,
+      modelRef: session.modelRef
+    });
+
+    return session;
+  }
+
+  async switchSession(sessionId: string) {
+    await this.store.setCurrentSession(sessionId);
+    return this.store.getCurrentSession();
+  }
+
   async submitPrompt(prompt: string): Promise<SessionSubmitResult> {
     const trimmed = prompt.trim();
 
@@ -31,7 +53,7 @@ export class SessionService {
       throw new Error("Prompt cannot be empty.");
     }
 
-    const session = await this.ensureSession();
+    const session = this.store.getCurrentSession() ?? (await this.createNewSession());
     const input = await this.admitInput(session.id, trimmed);
 
     await this.eventLog.append(session.id, "session.input.admitted", {
@@ -49,25 +71,6 @@ export class SessionService {
         status: "promoted"
       }
     };
-  }
-
-  private async ensureSession() {
-    const existing = this.store.getCurrentSession();
-
-    if (existing) {
-      return existing;
-    }
-
-    const session = await this.store.createSession(this.workspaceUri);
-
-    await this.eventLog.append(session.id, "session.created", {
-      title: session.title,
-      workspaceUri: session.workspaceUri,
-      agentId: session.agentId,
-      modelRef: session.modelRef
-    });
-
-    return session;
   }
 
   private async admitInput(sessionId: string, prompt: string): Promise<SessionInput> {

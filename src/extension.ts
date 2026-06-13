@@ -4,7 +4,7 @@ import { EventLog } from "./core/session/EventLog";
 import { SessionRunner } from "./core/session/SessionRunner";
 import { SessionService } from "./core/session/SessionService";
 import { SessionStore } from "./core/session/SessionStore";
-import type { SessionEvent } from "./core/session/types";
+import type { SessionEvent, SessionRecord } from "./core/session/types";
 
 type WebviewMessage =
   | {
@@ -16,6 +16,13 @@ type WebviewMessage =
     }
   | {
       type: "interrupt";
+    }
+  | {
+      type: "session.new";
+    }
+  | {
+      type: "session.switch";
+      sessionId: string;
     };
 
 export function activate(context: vscode.ExtensionContext) {
@@ -85,7 +92,7 @@ class AgentPanel {
   private handleMessage(message: WebviewMessage) {
     switch (message.type) {
       case "ready":
-        this.replaceEvents(this.sessionService.getCurrentSessionEvents());
+        this.refreshSessionState();
         this.postLiveEvent("system", "Panel ready. Submit a prompt to create durable session events.");
         return;
       case "prompt.submit":
@@ -93,6 +100,12 @@ class AgentPanel {
         return;
       case "interrupt":
         void this.handleInterrupt();
+        return;
+      case "session.new":
+        void this.handleNewSession();
+        return;
+      case "session.switch":
+        void this.handleSwitchSession(message.sessionId);
         return;
     }
   }
@@ -106,16 +119,52 @@ class AgentPanel {
     }
 
     try {
+      this.setRunning(true);
       const result = await this.sessionService.submitPrompt(trimmed);
+      this.refreshSessionState();
       await this.sessionRunner.run(result.session, result.input);
     } catch (error) {
       this.postLiveEvent("error", error instanceof Error ? error.message : "Failed to submit prompt.");
+    } finally {
+      this.setRunning(false);
     }
   }
 
   private async handleInterrupt() {
     const interrupted = await this.sessionRunner.interrupt();
     this.postLiveEvent("system", interrupted ? "Interrupt requested." : "No active agent run to interrupt.");
+  }
+
+  private async handleNewSession() {
+    if (this.sessionRunner.isRunning) {
+      this.postLiveEvent("error", "Cannot create a new session while the agent is running.");
+      return;
+    }
+
+    await this.sessionService.createNewSession();
+    this.refreshSessionState();
+  }
+
+  private async handleSwitchSession(sessionId: string) {
+    if (this.sessionRunner.isRunning) {
+      this.postLiveEvent("error", "Cannot switch sessions while the agent is running.");
+      return;
+    }
+
+    await this.sessionService.switchSession(sessionId);
+    this.refreshSessionState();
+  }
+
+  private refreshSessionState() {
+    const currentSession = this.sessionService.getCurrentSession();
+
+    this.panel.webview.postMessage({
+      type: "sessions.replace",
+      currentSessionId: currentSession?.id,
+      sessions: this.sessionService.getSessions().map(toWebviewSession)
+    });
+
+    this.replaceEvents(this.sessionService.getCurrentSessionEvents());
   }
 
   private replaceEvents(events: SessionEvent[]) {
@@ -173,6 +222,13 @@ class AgentPanel {
     });
   }
 
+  private setRunning(isRunning: boolean) {
+    this.panel.webview.postMessage({
+      type: "run.state",
+      isRunning
+    });
+  }
+
   private dispose() {
     AgentPanel.currentPanel = undefined;
 
@@ -204,6 +260,8 @@ class AgentPanel {
     }
 
     body {
+      height: 100vh;
+      overflow: hidden;
       margin: 0;
       color: var(--vscode-foreground);
       background: var(--vscode-editor-background);
@@ -213,11 +271,14 @@ class AgentPanel {
 
     .shell {
       display: grid;
-      grid-template-rows: auto 1fr auto;
-      min-height: 100vh;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      height: 100vh;
+      overflow: hidden;
     }
 
     .header {
+      display: grid;
+      gap: 10px;
       border-bottom: 1px solid var(--agent-border);
       padding: 14px 16px 12px;
       background: var(--agent-bg-soft);
@@ -234,6 +295,24 @@ class AgentPanel {
       color: var(--agent-muted);
       font-size: 12px;
       line-height: 1.4;
+    }
+
+    .session-bar {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 32px;
+      gap: 8px;
+      align-items: center;
+    }
+
+    select {
+      min-width: 0;
+      min-height: 30px;
+      border: 1px solid var(--vscode-dropdown-border, var(--agent-border));
+      border-radius: 4px;
+      padding: 0 8px;
+      color: var(--vscode-dropdown-foreground);
+      background: var(--vscode-dropdown-background);
+      font: inherit;
     }
 
     .events {
@@ -269,7 +348,9 @@ class AgentPanel {
 
     .composer {
       display: grid;
-      gap: 10px;
+      grid-template-columns: minmax(0, 1fr) 36px;
+      gap: 8px;
+      align-items: end;
       border-top: 1px solid var(--agent-border);
       padding: 12px 16px 14px;
       background: var(--agent-bg-soft);
@@ -278,7 +359,8 @@ class AgentPanel {
     textarea {
       width: 100%;
       min-height: 84px;
-      resize: vertical;
+      max-height: 160px;
+      resize: none;
       border: 1px solid var(--vscode-input-border, var(--agent-border));
       border-radius: 6px;
       padding: 10px;
@@ -300,10 +382,13 @@ class AgentPanel {
     }
 
     button {
+      display: inline-grid;
+      place-items: center;
+      min-width: 32px;
       min-height: 30px;
       border: 0;
       border-radius: 4px;
-      padding: 0 14px;
+      padding: 0;
       color: var(--vscode-button-foreground);
       background: var(--vscode-button-background);
       font: inherit;
@@ -313,23 +398,37 @@ class AgentPanel {
     button:hover {
       background: var(--vscode-button-hoverBackground);
     }
+
+    button svg {
+      width: 16px;
+      height: 16px;
+      stroke: currentColor;
+    }
   </style>
 </head>
 <body>
   <main class="shell">
     <header class="header">
-      <h1 class="title">Coding Agent</h1>
-      <p class="subtitle">Milestone 3: fake agent loop streaming through durable runtime events.</p>
+      <div>
+        <h1 class="title">Coding Agent</h1>
+        <p class="subtitle">Milestone 3: fake agent loop streaming through durable runtime events.</p>
+      </div>
+      <div class="session-bar">
+        <select id="sessionSelect" aria-label="Session"></select>
+        <button type="button" id="newSession" title="New session" aria-label="New session">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 5v14"></path>
+            <path d="M5 12h14"></path>
+          </svg>
+        </button>
+      </div>
     </header>
 
     <section id="events" class="events" aria-live="polite"></section>
 
     <form id="composer" class="composer">
       <textarea id="prompt" placeholder="Describe a coding task..." spellcheck="true"></textarea>
-      <div class="actions">
-        <button type="button" id="interrupt">Interrupt</button>
-        <button type="submit">Submit</button>
-      </div>
+      <button type="submit" id="actionButton" title="Submit" aria-label="Submit"></button>
     </form>
   </main>
 
@@ -338,18 +437,33 @@ class AgentPanel {
     const events = document.getElementById("events");
     const composer = document.getElementById("composer");
     const promptInput = document.getElementById("prompt");
-    const interruptButton = document.getElementById("interrupt");
+    const actionButton = document.getElementById("actionButton");
+    const sessionSelect = document.getElementById("sessionSelect");
+    const newSessionButton = document.getElementById("newSession");
+    let isRunning = false;
+
+    setRunning(false);
 
     composer.addEventListener("submit", (event) => {
       event.preventDefault();
+
+      if (isRunning) {
+        vscode.postMessage({ type: "interrupt" });
+        return;
+      }
+
       const prompt = promptInput.value;
       vscode.postMessage({ type: "prompt.submit", prompt });
       promptInput.value = "";
       promptInput.focus();
     });
 
-    interruptButton.addEventListener("click", () => {
-      vscode.postMessage({ type: "interrupt" });
+    newSessionButton.addEventListener("click", () => {
+      vscode.postMessage({ type: "session.new" });
+    });
+
+    sessionSelect.addEventListener("change", () => {
+      vscode.postMessage({ type: "session.switch", sessionId: sessionSelect.value });
     });
 
     window.addEventListener("message", (event) => {
@@ -359,6 +473,15 @@ class AgentPanel {
         for (const event of message.events) {
           appendEvent(event);
         }
+      }
+
+      if (message.type === "sessions.replace") {
+        replaceSessions(message.sessions, message.currentSessionId);
+        setRunning(isRunning);
+      }
+
+      if (message.type === "run.state") {
+        setRunning(message.isRunning);
       }
 
       if (message.type === "event.append") {
@@ -389,6 +512,26 @@ class AgentPanel {
       item.append(meta, text);
       events.append(item);
       events.scrollTop = events.scrollHeight;
+    }
+
+    function replaceSessions(sessions, currentSessionId) {
+      sessionSelect.replaceChildren();
+
+      if (sessions.length === 0) {
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "No session yet";
+        sessionSelect.append(option);
+        return;
+      }
+
+      for (const session of sessions) {
+        const option = document.createElement("option");
+        option.value = session.id;
+        option.textContent = session.label;
+        option.selected = session.id === currentSessionId;
+        sessionSelect.append(option);
+      }
     }
 
     function appendAssistantDelta(textId, delta, timestamp) {
@@ -427,6 +570,18 @@ class AgentPanel {
       item.dataset.final = "true";
     }
 
+    function setRunning(nextIsRunning) {
+      isRunning = nextIsRunning;
+      promptInput.disabled = isRunning;
+      sessionSelect.disabled = isRunning || sessionSelect.options.length === 0 || sessionSelect.value === "";
+      newSessionButton.disabled = isRunning;
+      actionButton.title = isRunning ? "Interrupt" : "Submit";
+      actionButton.setAttribute("aria-label", isRunning ? "Interrupt" : "Submit");
+      actionButton.innerHTML = isRunning
+        ? '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="6" width="12" height="12"></rect></svg>'
+        : '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg>';
+    }
+
     vscode.postMessage({ type: "ready" });
   </script>
 </body>
@@ -447,6 +602,16 @@ function getNonce() {
 
 function getWorkspaceUri() {
   return vscode.workspace.workspaceFolders?.[0]?.uri.toString() ?? "untitled-workspace";
+}
+
+function toWebviewSession(session: SessionRecord) {
+  const createdAt = new Date(session.createdAt);
+  const label = `${session.title} - ${createdAt.toLocaleDateString()} ${createdAt.toLocaleTimeString()}`;
+
+  return {
+    id: session.id,
+    label
+  };
 }
 
 function toReplayableWebviewEvents(events: SessionEvent[]) {

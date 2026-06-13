@@ -26,6 +26,10 @@ export class SessionStore {
     return snapshot.sessions.find((session) => session.id === snapshot.currentSessionId);
   }
 
+  getSessions(): SessionRecord[] {
+    return [...this.getSnapshot().sessions].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  }
+
   getInputsForSession(sessionId: string): SessionInput[] {
     return this.getSnapshot().inputs.filter((input) => input.sessionId === sessionId);
   }
@@ -51,6 +55,20 @@ export class SessionStore {
     });
 
     return session;
+  }
+
+  async setCurrentSession(sessionId: string) {
+    const snapshot = this.getSnapshot();
+    const exists = snapshot.sessions.some((session) => session.id === sessionId);
+
+    if (!exists) {
+      throw new Error(`Session not found: ${sessionId}`);
+    }
+
+    await this.saveSnapshot({
+      ...snapshot,
+      currentSessionId: sessionId
+    });
   }
 
   async addInput(input: SessionInput) {

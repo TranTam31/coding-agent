@@ -7,8 +7,8 @@ This file tracks implementation progress for the Coding Agent VS Code Extension.
 ## Current Status
 
 - Project phase: Milestone 3 complete.
-- Repository state: TypeScript VS Code extension shell with durable session/event foundations and a fake agent loop.
-- Implemented code: command activation, webview panel, prompt input, session store, session input inbox, event log, event replay, fake model client, session runner, streamed assistant text, basic interrupt.
+- Repository state: TypeScript VS Code extension shell with durable session/event foundations, fake agent loop, and basic multi-session UI.
+- Implemented code: command activation, webview panel, prompt input, session store, session input inbox, event log, event replay, fake model client, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching.
 - Next recommended step: Milestone 4, add tool registry and safe read-oriented workspace tools.
 
 ## Progress Rules
@@ -217,6 +217,11 @@ Expected outcome:
 - Added durable events for `session.step.started`, `assistant.text.delta`, `assistant.text.ended`, `session.step.ended`, `session.step.failed`, and `session.interrupt.requested`.
 - Connected prompt submission to the fake agent loop so assistant text streams through the event system and replays from `assistant.text.ended`.
 - Added a basic Interrupt button that cancels the active fake model stream.
+- Verified the project compiles with `npm run compile`.
+- Refined Milestone 3 after manual UX review: made the fake model response longer and chunked into small delayed deltas so streaming is visible.
+- Replaced separate Submit and Interrupt buttons with one icon action button that switches from submit to interrupt while the runner is active.
+- Fixed the composer to stay at the bottom while only the conversation/event area scrolls.
+- Added minimal multi-session foundation in the UI and service layer: create a new session and switch the current session from a selector.
 - Verified the project compiles with `npm run compile`.
 
 ## Next Step
