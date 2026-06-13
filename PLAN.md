@@ -6,10 +6,10 @@ This file tracks implementation progress for the Coding Agent VS Code Extension.
 
 ## Current Status
 
-- Project phase: Milestone 1 complete.
-- Repository state: TypeScript VS Code extension shell exists.
-- Implemented code: command activation, webview panel, prompt input, placeholder event display, TypeScript build config.
-- Next recommended step: Milestone 2, add session and event-log services.
+- Project phase: Milestone 2 complete.
+- Repository state: TypeScript VS Code extension shell with durable session/event foundations.
+- Implemented code: command activation, webview panel, prompt input, session store, session input inbox, event log, event replay, TypeScript build config.
+- Next recommended step: Milestone 3, add a fake agent loop and fake model client.
 
 ## Progress Rules
 
@@ -53,16 +53,16 @@ Goal: introduce durable session concepts before adding model intelligence.
 
 Checklist:
 
-- [ ] Add `SessionService`.
-- [ ] Add `SessionStore`.
-- [ ] Add `SessionInput`.
-- [ ] Add `EventLog`.
-- [ ] Create a session when the first prompt is submitted.
-- [ ] Record `session.created`.
-- [ ] Record `session.input.admitted`.
-- [ ] Record `session.input.promoted` when the runner starts processing.
-- [ ] Render session events in the UI.
-- [ ] Persist sessions and events using the first storage backend.
+- [x] Add `SessionService`.
+- [x] Add `SessionStore`.
+- [x] Add `SessionInput`.
+- [x] Add `EventLog`.
+- [x] Create a session when the first prompt is submitted.
+- [x] Record `session.created`.
+- [x] Record `session.input.admitted`.
+- [x] Record `session.input.promoted` when the runner starts processing.
+- [x] Render session events in the UI.
+- [x] Persist sessions and events using the first storage backend.
 
 Expected outcome:
 
@@ -207,6 +207,13 @@ Expected outcome:
 - Added command `codingAgent.openPanel`, a webview panel, prompt submission, and local placeholder events.
 - Installed npm dependencies and verified the project compiles with `npm run compile`.
 
+### 2026-06-13
+
+- Completed Milestone 2 by adding `SessionService`, `SessionStore`, `SessionInput` types, and `EventLog`.
+- Persisted sessions, inputs, and events through VS Code `workspaceState` as the first storage backend.
+- Changed prompt submission to create a session on first use, record `session.created`, admit input, promote input, and replay session events in the webview.
+- Verified the project compiles with `npm run compile`.
+
 ## Next Step
 
-Implement Milestone 2: add `SessionService`, `SessionStore`, `SessionInput`, and `EventLog`; create a session when the first prompt is submitted; render recorded events in the UI.
+Implement Milestone 3: add `SessionRunner`, `ModelClient`, and `FakeModelClient`; stream fake assistant text through the event system and enforce the first step limit.

@@ -1,4 +1,8 @@
 import * as vscode from "vscode";
+import { EventLog } from "./core/session/EventLog";
+import { SessionService } from "./core/session/SessionService";
+import { SessionStore } from "./core/session/SessionStore";
+import type { SessionEvent } from "./core/session/types";
 
 type WebviewMessage =
   | {
@@ -10,11 +14,15 @@ type WebviewMessage =
     };
 
 export function activate(context: vscode.ExtensionContext) {
+  const sessionStore = new SessionStore(context.workspaceState);
+  const eventLog = new EventLog(context.workspaceState);
+  const sessionService = new SessionService(sessionStore, eventLog, getWorkspaceUri());
+
   const openPanelCommand = vscode.commands.registerCommand("codingAgent.openPanel", () => {
-    AgentPanel.show(context.extensionUri);
+    AgentPanel.show(context.extensionUri, sessionService);
   });
 
-  context.subscriptions.push(openPanelCommand);
+  context.subscriptions.push(openPanelCommand, eventLog);
 }
 
 export function deactivate() {}
@@ -23,9 +31,10 @@ class AgentPanel {
   private static currentPanel: AgentPanel | undefined;
   private readonly panel: vscode.WebviewPanel;
   private readonly extensionUri: vscode.Uri;
+  private readonly sessionService: SessionService;
   private disposables: vscode.Disposable[] = [];
 
-  static show(extensionUri: vscode.Uri) {
+  static show(extensionUri: vscode.Uri, sessionService: SessionService) {
     if (AgentPanel.currentPanel) {
       AgentPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
       return;
@@ -41,15 +50,17 @@ class AgentPanel {
       }
     );
 
-    AgentPanel.currentPanel = new AgentPanel(panel, extensionUri);
+    AgentPanel.currentPanel = new AgentPanel(panel, extensionUri, sessionService);
   }
 
-  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri) {
+  private constructor(panel: vscode.WebviewPanel, extensionUri: vscode.Uri, sessionService: SessionService) {
     this.panel = panel;
     this.extensionUri = extensionUri;
+    this.sessionService = sessionService;
     this.panel.webview.html = this.getHtml(this.panel.webview);
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
+    this.sessionService.onDidAppendEvent((event) => this.postSessionEvent(event), null, this.disposables);
     this.panel.webview.onDidReceiveMessage(
       (message: WebviewMessage) => this.handleMessage(message),
       null,
@@ -60,30 +71,55 @@ class AgentPanel {
   private handleMessage(message: WebviewMessage) {
     switch (message.type) {
       case "ready":
-        this.postEvent("system", "Panel ready. Submit a prompt to create a placeholder agent event.");
+        this.replaceEvents(this.sessionService.getCurrentSessionEvents());
+        this.postLiveEvent("system", "Panel ready. Submit a prompt to create durable session events.");
         return;
       case "prompt.submit":
-        this.handlePrompt(message.prompt);
+        void this.handlePrompt(message.prompt);
         return;
     }
   }
 
-  private handlePrompt(prompt: string) {
+  private async handlePrompt(prompt: string) {
     const trimmed = prompt.trim();
 
     if (!trimmed) {
-      this.postEvent("error", "Prompt cannot be empty.");
+      this.postLiveEvent("error", "Prompt cannot be empty.");
       return;
     }
 
-    this.postEvent("user", trimmed);
-    this.postEvent(
-      "agent",
-      "Placeholder response: Milestone 1 only wires the VS Code panel. Session state and the real agent loop start in Milestone 2."
-    );
+    try {
+      await this.sessionService.submitPrompt(trimmed);
+      this.postLiveEvent(
+        "system",
+        "Milestone 2 recorded the prompt as durable session input. The fake agent loop starts in Milestone 3."
+      );
+    } catch (error) {
+      this.postLiveEvent("error", error instanceof Error ? error.message : "Failed to submit prompt.");
+    }
   }
 
-  private postEvent(kind: "agent" | "error" | "system" | "user", text: string) {
+  private replaceEvents(events: SessionEvent[]) {
+    this.panel.webview.postMessage({
+      type: "events.replace",
+      events: events.map((event) => this.toWebviewEvent(event))
+    });
+  }
+
+  private postSessionEvent(event: SessionEvent) {
+    const currentSession = this.sessionService.getCurrentSession();
+
+    if (!currentSession || currentSession.id !== event.sessionId) {
+      return;
+    }
+
+    this.panel.webview.postMessage({
+      type: "event.append",
+      event: this.toWebviewEvent(event)
+    });
+  }
+
+  private postLiveEvent(kind: "agent" | "error" | "system" | "user", text: string) {
     this.panel.webview.postMessage({
       type: "event.append",
       event: {
@@ -93,6 +129,15 @@ class AgentPanel {
         timestamp: new Date().toISOString()
       }
     });
+  }
+
+  private toWebviewEvent(event: SessionEvent) {
+    return {
+      id: event.id,
+      kind: getEventKind(event),
+      text: formatSessionEvent(event),
+      timestamp: event.timestamp
+    };
   }
 
   private dispose() {
@@ -241,7 +286,7 @@ class AgentPanel {
   <main class="shell">
     <header class="header">
       <h1 class="title">Coding Agent</h1>
-      <p class="subtitle">Milestone 1 shell: prompt input and local placeholder events.</p>
+      <p class="subtitle">Milestone 2: durable session inputs and replayable event history.</p>
     </header>
 
     <section id="events" class="events" aria-live="polite"></section>
@@ -270,11 +315,16 @@ class AgentPanel {
 
     window.addEventListener("message", (event) => {
       const message = event.data;
-      if (message.type !== "event.append") {
-        return;
+      if (message.type === "events.replace") {
+        events.replaceChildren();
+        for (const event of message.events) {
+          appendEvent(event);
+        }
       }
 
-      appendEvent(message.event);
+      if (message.type === "event.append") {
+        appendEvent(message.event);
+      }
     });
 
     function appendEvent(event) {
@@ -283,7 +333,7 @@ class AgentPanel {
 
       const meta = document.createElement("div");
       meta.className = "event__meta";
-      meta.textContent = event.kind + " • " + new Date(event.timestamp).toLocaleTimeString();
+      meta.textContent = event.kind + " - " + new Date(event.timestamp).toLocaleTimeString();
 
       const text = document.createElement("p");
       text.className = "event__text";
@@ -310,4 +360,29 @@ function getNonce() {
   }
 
   return text;
+}
+
+function getWorkspaceUri() {
+  return vscode.workspace.workspaceFolders?.[0]?.uri.toString() ?? "untitled-workspace";
+}
+
+function getEventKind(event: SessionEvent): "agent" | "error" | "system" | "user" {
+  switch (event.type) {
+    case "session.input.admitted":
+      return "user";
+    case "session.created":
+    case "session.input.promoted":
+      return "system";
+  }
+}
+
+function formatSessionEvent(event: SessionEvent) {
+  switch (event.type) {
+    case "session.created":
+      return `Session created (${String(event.data.title ?? "New coding task")}).`;
+    case "session.input.admitted":
+      return String(event.data.prompt ?? "Prompt admitted.");
+    case "session.input.promoted":
+      return `Input promoted to model-visible history boundary (${String(event.data.inputId ?? "unknown input")}).`;
+  }
 }
