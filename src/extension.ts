@@ -29,7 +29,9 @@ type WebviewMessage =
       sessionId: string;
     }
   | {
-      type: "activeFile.add";
+      type: "file.search";
+      query: string;
+      requestId: string;
     };
 
 export function activate(context: vscode.ExtensionContext) {
@@ -90,6 +92,8 @@ class AgentPanel {
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
     this.sessionService.onDidAppendEvent((event) => this.postSessionEvent(event), null, this.disposables);
+    vscode.window.tabGroups.onDidChangeTabs(() => this.sendOpenFiles(), null, this.disposables);
+    vscode.window.onDidChangeActiveTextEditor(() => this.sendOpenFiles(), null, this.disposables);
     this.panel.webview.onDidReceiveMessage(
       (message: WebviewMessage) => this.handleMessage(message),
       null,
@@ -115,8 +119,8 @@ class AgentPanel {
       case "session.switch":
         void this.handleSwitchSession(message.sessionId);
         return;
-      case "activeFile.add":
-        this.sendActiveFile();
+      case "file.search":
+        void this.searchFiles(message.query, message.requestId);
         return;
     }
   }
@@ -190,28 +194,43 @@ class AgentPanel {
     this.refreshSessionState();
   }
 
-  private sendActiveFile() {
+  private sendOpenFiles() {
     const workspaceFolder = getPrimaryWorkspaceFolder();
-    const activeEditor = vscode.window.activeTextEditor;
 
-    if (!workspaceFolder || !activeEditor) {
-      this.postLiveEvent("error", "No active editor file is available.");
-      return;
-    }
-
-    const activeUri = activeEditor.document.uri;
-
-    if (activeUri.scheme !== "file" || !activeUri.fsPath.startsWith(workspaceFolder.uri.fsPath)) {
-      this.postLiveEvent("error", "The active editor is not a file inside the current workspace.");
+    if (!workspaceFolder) {
+      this.panel.webview.postMessage({
+        type: "openFiles.replace",
+        files: []
+      });
       return;
     }
 
     this.panel.webview.postMessage({
-      type: "activeFile.added",
-      file: {
-        path: toRelativePath(activeUri, workspaceFolder),
-        name: activeEditor.document.fileName.split(/[\\/]/).pop() ?? "active file"
-      }
+      type: "openFiles.replace",
+      files: getOpenWorkspaceFiles(workspaceFolder)
+    });
+  }
+
+  private async searchFiles(query: string, requestId: string) {
+    const workspaceFolder = getPrimaryWorkspaceFolder();
+
+    if (!workspaceFolder) {
+      this.panel.webview.postMessage({
+        type: "file.search.results",
+        requestId,
+        results: []
+      });
+      return;
+    }
+
+    const cleanQuery = query.trim().replaceAll("\\", "/").replace(/^@/, "");
+    const pattern = cleanQuery ? `**/*${cleanQuery}*` : "**/*";
+    const uris = await vscode.workspace.findFiles(pattern, "**/{node_modules,dist,.git}/**", 20);
+
+    this.panel.webview.postMessage({
+      type: "file.search.results",
+      requestId,
+      results: uris.map((uri) => toFileReference(uri, workspaceFolder))
     });
   }
 
@@ -225,6 +244,7 @@ class AgentPanel {
     });
 
     this.replaceEvents(this.sessionService.getCurrentSessionEvents());
+    this.sendOpenFiles();
   }
 
   private replaceEvents(events: SessionEvent[]) {
@@ -416,7 +436,7 @@ class AgentPanel {
       background: var(--agent-bg-soft);
     }
 
-    .attachments {
+    .context-files {
       grid-column: 1 / -1;
       display: flex;
       flex-wrap: wrap;
@@ -424,7 +444,7 @@ class AgentPanel {
       min-height: 0;
     }
 
-    .attachment {
+    .context-file {
       display: inline-flex;
       max-width: 100%;
       align-items: center;
@@ -437,17 +457,64 @@ class AgentPanel {
       font-size: 12px;
     }
 
-    .attachment span {
+    .context-file--preview span {
+      font-style: italic;
+    }
+
+    .context-file--attached {
+      border-color: var(--vscode-focusBorder);
+    }
+
+    .context-file span {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
 
-    .attachment button {
+    .context-file button {
       min-width: 18px;
       min-height: 18px;
       background: transparent;
       color: inherit;
+    }
+
+    .prompt-wrap {
+      position: relative;
+      min-width: 0;
+    }
+
+    .file-suggest {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: calc(100% + 6px);
+      z-index: 10;
+      max-height: 220px;
+      overflow-y: auto;
+      border: 1px solid var(--agent-border);
+      border-radius: 6px;
+      background: var(--vscode-dropdown-background);
+      box-shadow: 0 8px 22px rgb(0 0 0 / 22%);
+    }
+
+    .file-suggest[hidden] {
+      display: none;
+    }
+
+    .file-suggest button {
+      display: block;
+      width: 100%;
+      min-height: 30px;
+      border-radius: 0;
+      padding: 0 10px;
+      text-align: left;
+      color: var(--vscode-dropdown-foreground);
+      background: transparent;
+    }
+
+    .file-suggest button:hover,
+    .file-suggest button[data-active="true"] {
+      background: var(--vscode-list-hoverBackground);
     }
 
     textarea {
@@ -521,14 +588,12 @@ class AgentPanel {
     <section id="events" class="events" aria-live="polite"></section>
 
     <form id="composer" class="composer">
-      <div id="attachments" class="attachments"></div>
-      <button type="button" id="addActiveFile" title="Add active editor file" aria-label="Add active editor file">
-        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M12 5v14"></path>
-          <path d="M5 12h14"></path>
-        </svg>
-      </button>
-      <textarea id="prompt" placeholder="Describe a coding task..." spellcheck="true"></textarea>
+      <div id="contextFiles" class="context-files"></div>
+      <div></div>
+      <div class="prompt-wrap">
+        <div id="fileSuggest" class="file-suggest" hidden></div>
+        <textarea id="prompt" placeholder="Describe a coding task..." spellcheck="true"></textarea>
+      </div>
       <button type="submit" id="actionButton" title="Submit" aria-label="Submit"></button>
     </form>
   </main>
@@ -539,12 +604,15 @@ class AgentPanel {
     const composer = document.getElementById("composer");
     const promptInput = document.getElementById("prompt");
     const actionButton = document.getElementById("actionButton");
-    const addActiveFileButton = document.getElementById("addActiveFile");
-    const attachments = document.getElementById("attachments");
+    const contextFiles = document.getElementById("contextFiles");
+    const fileSuggest = document.getElementById("fileSuggest");
     const sessionSelect = document.getElementById("sessionSelect");
     const newSessionButton = document.getElementById("newSession");
     let isRunning = false;
     let attachedFiles = [];
+    let openFiles = [];
+    let suggestState = null;
+    let suggestRequestId = 0;
 
     setRunning(false);
 
@@ -562,16 +630,27 @@ class AgentPanel {
       promptInput.focus();
     });
 
-    addActiveFileButton.addEventListener("click", () => {
-      vscode.postMessage({ type: "activeFile.add" });
-    });
-
     newSessionButton.addEventListener("click", () => {
       vscode.postMessage({ type: "session.new" });
     });
 
     sessionSelect.addEventListener("change", () => {
       vscode.postMessage({ type: "session.switch", sessionId: sessionSelect.value });
+    });
+
+    promptInput.addEventListener("input", () => {
+      updateFileSuggestions();
+    });
+
+    promptInput.addEventListener("keydown", (event) => {
+      if (!suggestState || fileSuggest.hidden) {
+        return;
+      }
+
+      if (event.key === "Escape") {
+        hideFileSuggestions();
+        event.preventDefault();
+      }
     });
 
     window.addEventListener("message", (event) => {
@@ -592,8 +671,13 @@ class AgentPanel {
         setRunning(message.isRunning);
       }
 
-      if (message.type === "activeFile.added") {
-        addAttachedFile(message.file);
+      if (message.type === "openFiles.replace") {
+        openFiles = message.files;
+        renderContextFiles();
+      }
+
+      if (message.type === "file.search.results") {
+        renderFileSuggestions(message.requestId, message.results);
       }
 
       if (message.type === "event.append") {
@@ -646,41 +730,130 @@ class AgentPanel {
       }
     }
 
-    function addAttachedFile(file) {
-      if (attachedFiles.includes(file.path)) {
+    function toggleAttachedFile(path) {
+      attachedFiles = attachedFiles.includes(path)
+        ? attachedFiles.filter((filePath) => filePath !== path)
+        : [...attachedFiles, path];
+      renderContextFiles();
+    }
+
+    function renderContextFiles() {
+      contextFiles.replaceChildren();
+      const byPath = new Map();
+
+      for (const file of openFiles) {
+        byPath.set(file.path, file);
+      }
+
+      for (const path of attachedFiles) {
+        if (!byPath.has(path)) {
+          byPath.set(path, {
+            path,
+            name: path.split("/").pop() || path,
+            isPreview: false,
+            isActive: false
+          });
+        }
+      }
+
+      for (const file of byPath.values()) {
+        const isAttached = attachedFiles.includes(file.path);
+        const chip = document.createElement("div");
+        chip.className = "context-file" + (file.isPreview ? " context-file--preview" : "") + (isAttached ? " context-file--attached" : "");
+        chip.title = file.path;
+
+        const toggle = document.createElement("button");
+        toggle.type = "button";
+        toggle.title = (isAttached ? "Remove " : "Add ") + file.path;
+        toggle.setAttribute("aria-label", toggle.title);
+        toggle.textContent = isAttached ? "x" : "+";
+        toggle.disabled = isRunning;
+        toggle.addEventListener("click", () => toggleAttachedFile(file.path));
+
+        const label = document.createElement("span");
+        label.textContent = file.name;
+
+        chip.append(toggle, label);
+        contextFiles.append(chip);
+      }
+    }
+
+    function updateFileSuggestions() {
+      const mention = getActiveMention();
+
+      if (!mention) {
+        hideFileSuggestions();
         return;
       }
 
-      attachedFiles = [...attachedFiles, file.path];
-      renderAttachments();
+      const requestId = String(++suggestRequestId);
+      suggestState = { ...mention, requestId };
+      vscode.postMessage({ type: "file.search", query: mention.query, requestId });
     }
 
-    function removeAttachedFile(path) {
-      attachedFiles = attachedFiles.filter((filePath) => filePath !== path);
-      renderAttachments();
-    }
+    function getActiveMention() {
+      const cursor = promptInput.selectionStart;
+      const beforeCursor = promptInput.value.slice(0, cursor);
+      const at = beforeCursor.lastIndexOf("@");
 
-    function renderAttachments() {
-      attachments.replaceChildren();
-
-      for (const path of attachedFiles) {
-        const chip = document.createElement("div");
-        chip.className = "attachment";
-        chip.title = path;
-
-        const label = document.createElement("span");
-        label.textContent = path;
-
-        const remove = document.createElement("button");
-        remove.type = "button";
-        remove.title = "Remove " + path;
-        remove.setAttribute("aria-label", "Remove " + path);
-        remove.textContent = "x";
-        remove.addEventListener("click", () => removeAttachedFile(path));
-
-        chip.append(label, remove);
-        attachments.append(chip);
+      if (at === -1) {
+        return null;
       }
+
+      const token = beforeCursor.slice(at + 1);
+
+      if (/[\s,;]/.test(token) || token.includes("\\n")) {
+        return null;
+      }
+
+      return {
+        start: at,
+        end: cursor,
+        query: token
+      };
+    }
+
+    function renderFileSuggestions(requestId, results) {
+      if (!suggestState || suggestState.requestId !== requestId) {
+        return;
+      }
+
+      fileSuggest.replaceChildren();
+
+      if (results.length === 0) {
+        hideFileSuggestions();
+        return;
+      }
+
+      for (const result of results) {
+        const option = document.createElement("button");
+        option.type = "button";
+        option.textContent = result.path;
+        option.addEventListener("click", () => applyFileSuggestion(result.path));
+        fileSuggest.append(option);
+      }
+
+      fileSuggest.hidden = false;
+    }
+
+    function applyFileSuggestion(path) {
+      if (!suggestState) {
+        return;
+      }
+
+      const value = promptInput.value;
+      const replacement = "@" + path;
+      promptInput.value = value.slice(0, suggestState.start) + replacement + value.slice(suggestState.end);
+      const nextCursor = suggestState.start + replacement.length;
+      promptInput.setSelectionRange(nextCursor, nextCursor);
+      promptInput.focus();
+      hideFileSuggestions();
+    }
+
+    function hideFileSuggestions() {
+      suggestState = null;
+      fileSuggest.hidden = true;
+      fileSuggest.replaceChildren();
     }
 
     function appendAssistantDelta(textId, delta, timestamp) {
@@ -722,9 +895,9 @@ class AgentPanel {
     function setRunning(nextIsRunning) {
       isRunning = nextIsRunning;
       promptInput.disabled = isRunning;
-      addActiveFileButton.disabled = isRunning;
       sessionSelect.disabled = isRunning || sessionSelect.options.length === 0 || sessionSelect.value === "";
       newSessionButton.disabled = isRunning;
+      renderContextFiles();
       actionButton.title = isRunning ? "Interrupt" : "Submit";
       actionButton.setAttribute("aria-label", isRunning ? "Interrupt" : "Submit");
       actionButton.innerHTML = isRunning
@@ -762,6 +935,60 @@ function toWebviewSession(session: SessionRecord) {
     id: session.id,
     label
   };
+}
+
+function getOpenWorkspaceFiles(workspaceFolder: vscode.WorkspaceFolder) {
+  const files = new Map<string, ReturnType<typeof toFileReference> & { isActive: boolean; isPreview: boolean }>();
+
+  for (const group of vscode.window.tabGroups.all) {
+    for (const tab of group.tabs) {
+      const uri = getTabUri(tab);
+
+      if (!uri || !isWorkspaceFile(uri, workspaceFolder)) {
+        continue;
+      }
+
+      const file = toFileReference(uri, workspaceFolder);
+      files.set(file.path, {
+        ...file,
+        isActive: tab.isActive,
+        isPreview: tab.isPreview
+      });
+    }
+  }
+
+  return [...files.values()].sort((left, right) => {
+    if (left.isActive !== right.isActive) {
+      return left.isActive ? -1 : 1;
+    }
+
+    return left.path.localeCompare(right.path);
+  });
+}
+
+function getTabUri(tab: vscode.Tab) {
+  if (tab.input instanceof vscode.TabInputText) {
+    return tab.input.uri;
+  }
+
+  if (tab.input instanceof vscode.TabInputTextDiff) {
+    return tab.input.modified;
+  }
+
+  return undefined;
+}
+
+function toFileReference(uri: vscode.Uri, workspaceFolder: vscode.WorkspaceFolder) {
+  const relativePath = toRelativePath(uri, workspaceFolder);
+
+  return {
+    path: relativePath,
+    name: uri.fsPath.split(/[\\/]/).pop() ?? relativePath
+  };
+}
+
+function isWorkspaceFile(uri: vscode.Uri, workspaceFolder: vscode.WorkspaceFolder) {
+  return uri.scheme === "file" && uri.fsPath.startsWith(workspaceFolder.uri.fsPath);
 }
 
 function toReplayableWebviewEvents(events: SessionEvent[]) {

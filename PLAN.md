@@ -7,8 +7,8 @@ This file tracks implementation progress for the Coding Agent VS Code Extension.
 ## Current Status
 
 - Project phase: Milestone 4 complete.
-- Repository state: TypeScript VS Code extension shell with durable session/event foundations, fake agent loop, basic multi-session UI, read-oriented tool registry, and prompt file context attachments.
-- Implemented code: command activation, webview panel, prompt input, session store, session input inbox, event log, event replay, fake model client, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching, `@file` context resolution, active-editor file attachment, read/list/glob/grep/todo tools, tool call/result events.
+- Repository state: TypeScript VS Code extension shell with durable session/event foundations, fake agent loop, basic multi-session UI, read-oriented tool registry, and prompt file context UI.
+- Implemented code: command activation, webview panel, prompt input, session store, session input inbox, event log, event replay, fake model client, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching, `@file` context resolution with selector, open/preview-tab context file chips, read/list/glob/grep/todo tools, tool call/result events.
 - Next recommended step: Milestone 5, connect the runtime to a real model adapter while keeping the fake model useful for deterministic tests.
 
 ## Progress Rules
@@ -228,6 +228,11 @@ Expected outcome:
 - Added prompt file-context resolution for `@file` mentions, including workspace search, duplicate removal, missing-file diagnostics, and ambiguous-file diagnostics.
 - Added a `+` button in the composer that attaches the active VS Code editor file as prompt context.
 - Updated the fake model demo so prompts like `Đọc file @package.json @src/extension.ts` call `read_file` for each unique file and stream a response containing each file's content.
+- Verified the project compiles with `npm run compile`.
+- Refined context UI: open editor tabs, including preview tabs, now appear directly above the prompt with per-file `+`/`x` controls.
+- Removed the separate attach-active-file button because each visible context file now owns its own add/remove control.
+- Attached files remain in the context row after switching to other files, while newly opened files appear as available but unattached.
+- Added `@file` autocomplete: typing `@` plus a partial path searches the workspace and shows selectable valid files.
 - Verified the project compiles with `npm run compile`.
 
 ## Next Step
