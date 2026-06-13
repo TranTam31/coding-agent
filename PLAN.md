@@ -7,8 +7,8 @@ This file tracks implementation progress for the Coding Agent VS Code Extension.
 ## Current Status
 
 - Project phase: Milestone 4 complete.
-- Repository state: TypeScript VS Code extension shell with durable session/event foundations, fake agent loop, basic multi-session UI, read-oriented tool registry, and prompt file context UI.
-- Implemented code: command activation, webview panel, prompt input, session store, session input inbox, event log, event replay, fake model client, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching, `@file` context resolution with selector, open/preview-tab context file chips, read/list/glob/grep/todo tools, tool call/result events.
+- Repository state: TypeScript VS Code extension shell with durable session/event foundations, fake agent loop, basic multi-session UI, read-oriented tool registry, and React/Tailwind prompt file context UI.
+- Implemented code: command activation, webview panel, React webview, Tailwind styling, prompt input, session store, session input inbox, event log, event replay, fake model client, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching, `@file` context resolution with selector, open/preview-tab context file chips, read/list/glob/grep/todo tools, tool call/result events.
 - Next recommended step: Milestone 5, connect the runtime to a real model adapter while keeping the fake model useful for deterministic tests.
 
 ## Progress Rules
@@ -233,6 +233,11 @@ Expected outcome:
 - Removed the separate attach-active-file button because each visible context file now owns its own add/remove control.
 - Attached files remain in the context row after switching to other files, while newly opened files appear as available but unattached.
 - Added `@file` autocomplete: typing `@` plus a partial path searches the workspace and shows selectable valid files.
+- Verified the project compiles with `npm run compile`.
+- Refactored the webview UI from inline HTML/CSS/JavaScript in `extension.ts` to a React + Tailwind webview bundle under `src/webview`.
+- Added component boundaries for `Header`, `EventList`, `Composer`, `ContextFiles`, `FileSuggest`, and icons.
+- Updated the build pipeline with `esbuild` for React JS and Tailwind CLI for CSS, while keeping extension-host TypeScript separate from webview code.
+- Reduced `extension.ts` to a host-side webview shell plus message bridge.
 - Verified the project compiles with `npm run compile`.
 
 ## Next Step
