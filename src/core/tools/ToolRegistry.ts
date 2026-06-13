@@ -1,6 +1,8 @@
 import * as vscode from "vscode";
+import type { PermissionService } from "../permission/PermissionService";
 
 export type ToolContext = {
+  sessionId: string;
   workspaceFolder: vscode.WorkspaceFolder;
   signal: AbortSignal;
 };
@@ -13,11 +15,18 @@ export type ToolResult = {
 export type ToolDefinition = {
   name: string;
   description: string;
+  permission?: {
+    action: string;
+    resource(input: unknown, context: ToolContext): string;
+    description(input: unknown, context: ToolContext): string;
+  };
   execute(input: unknown, context: ToolContext): Promise<ToolResult>;
 };
 
 export class ToolRegistry {
   private readonly tools = new Map<string, ToolDefinition>();
+
+  constructor(private readonly permissionService?: PermissionService) {}
 
   register(tool: ToolDefinition) {
     if (this.tools.has(tool.name)) {
@@ -36,6 +45,20 @@ export class ToolRegistry {
 
     if (!tool) {
       throw new Error(`Unknown tool: ${name}`);
+    }
+
+    if (tool.permission) {
+      if (!this.permissionService) {
+        throw new Error(`Tool requires permission service: ${name}`);
+      }
+
+      await this.permissionService.authorize({
+        sessionId: context.sessionId,
+        action: tool.permission.action,
+        resource: tool.permission.resource(input, context),
+        description: tool.permission.description(input, context),
+        signal: context.signal
+      });
     }
 
     return tool.execute(input, context);

@@ -3,6 +3,9 @@ import { resolvePromptContext } from "./core/context/PromptContextResolver";
 import { DynamicModelClient } from "./core/model/DynamicModelClient";
 import { ModelService } from "./core/model/ModelService";
 import type { ModelProviderId, ModelRef } from "./core/model/ModelClient";
+import { PermissionService } from "./core/permission/PermissionService";
+import { PermissionStore } from "./core/permission/PermissionStore";
+import type { PermissionReply, PermissionRequest } from "./core/permission/types";
 import { EventLog } from "./core/session/EventLog";
 import { HistoryProjector } from "./core/session/HistoryProjector";
 import { SessionRunner } from "./core/session/SessionRunner";
@@ -51,6 +54,11 @@ type WebviewMessage =
   | {
       type: "model.select";
       model: ModelRef;
+    }
+  | {
+      type: "permission.reply";
+      permissionId: string;
+      reply: PermissionReply;
     };
 
 export function activate(context: vscode.ExtensionContext) {
@@ -59,14 +67,16 @@ export function activate(context: vscode.ExtensionContext) {
   const sessionService = new SessionService(sessionStore, eventLog, getWorkspaceUri());
   const modelService = new ModelService(context.secrets, context.workspaceState);
   const modelClient = new DynamicModelClient(modelService);
-  const toolRegistry = createDefaultToolRegistry();
+  const permissionStore = new PermissionStore(context.workspaceState);
+  const permissionService = new PermissionService(permissionStore, eventLog);
+  const toolRegistry = createDefaultToolRegistry(permissionService);
   const sessionRunner = new SessionRunner(sessionStore, eventLog, modelClient, toolRegistry);
 
   const openPanelCommand = vscode.commands.registerCommand("codingAgent.openPanel", () => {
-    AgentPanel.show(context.extensionUri, sessionService, sessionRunner, modelService);
+    AgentPanel.show(context.extensionUri, sessionService, sessionRunner, modelService, permissionService);
   });
 
-  context.subscriptions.push(openPanelCommand, eventLog);
+  context.subscriptions.push(openPanelCommand, eventLog, permissionService);
 }
 
 export function deactivate() {}
@@ -78,10 +88,17 @@ class AgentPanel {
   private readonly sessionService: SessionService;
   private readonly sessionRunner: SessionRunner;
   private readonly modelService: ModelService;
+  private readonly permissionService: PermissionService;
   private readonly historyProjector = new HistoryProjector();
   private disposables: vscode.Disposable[] = [];
 
-  static show(extensionUri: vscode.Uri, sessionService: SessionService, sessionRunner: SessionRunner, modelService: ModelService) {
+  static show(
+    extensionUri: vscode.Uri,
+    sessionService: SessionService,
+    sessionRunner: SessionRunner,
+    modelService: ModelService,
+    permissionService: PermissionService
+  ) {
     if (AgentPanel.currentPanel) {
       AgentPanel.currentPanel.panel.reveal(vscode.ViewColumn.Beside);
       return;
@@ -97,7 +114,7 @@ class AgentPanel {
       }
     );
 
-    AgentPanel.currentPanel = new AgentPanel(panel, extensionUri, sessionService, sessionRunner, modelService);
+    AgentPanel.currentPanel = new AgentPanel(panel, extensionUri, sessionService, sessionRunner, modelService, permissionService);
   }
 
   private constructor(
@@ -105,17 +122,20 @@ class AgentPanel {
     extensionUri: vscode.Uri,
     sessionService: SessionService,
     sessionRunner: SessionRunner,
-    modelService: ModelService
+    modelService: ModelService,
+    permissionService: PermissionService
   ) {
     this.panel = panel;
     this.extensionUri = extensionUri;
     this.sessionService = sessionService;
     this.sessionRunner = sessionRunner;
     this.modelService = modelService;
+    this.permissionService = permissionService;
     this.panel.webview.html = this.getHtml(this.panel.webview);
 
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
     this.sessionService.onDidAppendEvent((event) => this.postSessionEvent(event), null, this.disposables);
+    this.permissionService.onDidRequest((request) => this.postPermissionRequest(request), null, this.disposables);
     vscode.window.tabGroups.onDidChangeTabs(() => this.sendOpenFiles(), null, this.disposables);
     vscode.window.onDidChangeActiveTextEditor(() => this.sendOpenFiles(), null, this.disposables);
     this.panel.webview.onDidReceiveMessage(
@@ -158,6 +178,9 @@ class AgentPanel {
         return;
       case "model.select":
         void this.selectModel(message.model);
+        return;
+      case "permission.reply":
+        this.permissionService.reply(message.permissionId, message.reply);
         return;
     }
   }
@@ -421,6 +444,13 @@ class AgentPanel {
     });
   }
 
+  private postPermissionRequest(request: PermissionRequest) {
+    this.panel.webview.postMessage({
+      type: "permission.request",
+      request
+    });
+  }
+
   private setRunning(isRunning: boolean) {
     this.panel.webview.postMessage({
       type: "run.state",
@@ -577,6 +607,8 @@ function getEventKind(event: SessionEvent): "agent" | "error" | "system" | "user
     case "tool.success":
     case "session.compaction.started":
     case "session.compaction.ended":
+    case "permission.asked":
+    case "permission.replied":
       return "system";
     case "session.created":
     case "session.input.promoted":
@@ -608,6 +640,10 @@ function formatSessionEvent(event: SessionEvent) {
       return `Context compaction started (${String(event.data.sourceMessageCount ?? "unknown")} older messages).`;
     case "session.compaction.ended":
       return `Context compaction ended (${String(event.data.method ?? "unknown")} summary, cutoff ${String(event.data.cutoffEventId ?? "unknown")}).`;
+    case "permission.asked":
+      return `Permission requested: ${String(event.data.action ?? "unknown")} ${String(event.data.resource ?? "")}.`;
+    case "permission.replied":
+      return `Permission ${String(event.data.reply ?? "unknown")}: ${String(event.data.action ?? "unknown")} ${String(event.data.resource ?? "")}.`;
     case "tool.called":
       return `Tool called: ${String(event.data.name ?? "unknown")}.`;
     case "tool.success":

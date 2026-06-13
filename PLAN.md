@@ -6,10 +6,10 @@ This file tracks implementation progress for the Coding Agent VS Code Extension.
 
 ## Current Status
 
-- Project phase: Milestone 5.5 in progress.
+- Project phase: Milestone 6 in progress.
 - Repository state: TypeScript VS Code extension shell with durable session/event foundations, session history projection, fake agent loop, real model provider layer, basic multi-session UI, read-oriented tool registry, and React/Tailwind prompt file context UI.
-- Implemented code: command activation, webview panel, React webview, Tailwind styling, prompt input, session store, session input inbox, event log, event replay, history projector, persistent context compactor, fake model client, dynamic selected model client, Gemini provider, Groq provider, VS Code SecretStorage API key handling, model settings dialog, model selector, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching, `@file` context resolution with selector, open/preview-tab context file chips, read/list/glob/grep/todo tools, tool call/result events.
-- Next recommended step: validate Milestone 5.5 with longer real sessions, then decide whether provider-native tool declarations should be added before permission/file mutation work.
+- Implemented code: command activation, webview panel, React webview, Tailwind styling, prompt input, session store, session input inbox, event log, event replay, history projector, persistent context compactor, fake model client, dynamic selected model client, Gemini provider, Groq provider, VS Code SecretStorage API key handling, model settings dialog, model selector, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching, `@file` context resolution with selector, open/preview-tab context file chips, read/list/glob/grep/todo tools, mutation tools, permission service/store, approval UI, tool call/result events.
+- Next recommended step: add provider-native tool/function declarations so Gemini/Groq can call read and mutation tools directly, then harden patch partial-failure reporting and add tests.
 
 ## Progress Rules
 
@@ -165,14 +165,14 @@ Goal: allow code changes with explicit user approval.
 
 Checklist:
 
-- [ ] Add `PermissionService`.
-- [ ] Add permission request events.
-- [ ] Add approval UI for `once`, `always`, and `reject`.
-- [ ] Add `PermissionStore`.
-- [ ] Add `edit_file`.
-- [ ] Add `write_file`.
-- [ ] Add `apply_patch`.
-- [ ] Require approval for file mutation tools.
+- [x] Add `PermissionService`.
+- [x] Add permission request events.
+- [x] Add approval UI for `once`, `always`, and `reject`.
+- [x] Add `PermissionStore`.
+- [x] Add `edit_file`.
+- [x] Add `write_file`.
+- [x] Add `apply_patch`.
+- [x] Require approval for file mutation tools.
 - [ ] Report partial patch failures clearly.
 - [ ] Add tests for exact-edit behavior.
 
@@ -294,7 +294,14 @@ Expected outcome:
 - Expanded `Show context` to display projection metadata including persisted compaction status, cutoff event, recent raw message count, projected chars, and estimated tokens.
 - Updated `FakeModelClient` with a deterministic compaction response so Milestone 5.5 can be tested without a real provider.
 - Updated `AGENT.md` with durable compaction requirements and verified the project compiles with `npm run compile`.
+- Started Milestone 6 by adding `PermissionStore` and `PermissionService` with `once`, `always`, and `reject` replies.
+- Added durable `permission.asked` and `permission.replied` events, and wired permission requests from the extension host to the React webview.
+- Added a `PermissionPrompt` UI above the composer so mutation tools pause until the user approves or rejects the side effect.
+- Extended `ToolRegistry` with declarative permission metadata and enforced authorization before executing tools.
+- Added `write_file`, `edit_file`, and basic unified-diff `apply_patch` tools. All mutation tools stay inside the workspace resolver and require approval.
+- Updated `FakeModelClient` with deterministic test syntax for mutation tools: `write_file {...}`, `edit_file {...}`, and `apply_patch {...}`.
+- Verified the project compiles with `npm run compile`.
 
 ## Next Step
 
-Validate Milestone 5.5 with a long real Gemini session, then decide whether provider-native tool declarations should be added before Milestone 6.
+Add provider-native tool/function declarations for Gemini and Groq so real models can call the registered tools directly, then harden patch partial-failure reporting and add tests for `edit_file`.

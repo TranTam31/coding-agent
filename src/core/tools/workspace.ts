@@ -53,3 +53,17 @@ export async function readWorkspaceTextFile(workspaceFolder: vscode.WorkspaceFol
     size: stat.size
   };
 }
+
+export async function writeWorkspaceTextFile(workspaceFolder: vscode.WorkspaceFolder, relativePath: string, text: string) {
+  const target = resolveWorkspacePath(workspaceFolder, relativePath);
+  const parent = vscode.Uri.file(path.dirname(target.uri.fsPath));
+  const bytes = new TextEncoder().encode(text);
+
+  await vscode.workspace.fs.createDirectory(parent);
+  await vscode.workspace.fs.writeFile(target.uri, bytes);
+
+  return {
+    path: target.normalized,
+    size: bytes.byteLength
+  };
+}

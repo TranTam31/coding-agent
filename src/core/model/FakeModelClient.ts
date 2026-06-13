@@ -14,7 +14,18 @@ export class FakeModelClient implements ModelClient {
     }
 
     if (hasToolResultMessages(request)) {
-      yield* streamText(formatReadFileAnswer(toolResults), request.signal);
+      yield* streamText(formatToolResultAnswer(toolResults), request.signal);
+      return;
+    }
+
+    const mutationToolCall = parseMutationToolCall(userPrompt);
+
+    if (mutationToolCall) {
+      yield mutationToolCall;
+      yield {
+        type: "finish",
+        reason: "stop"
+      };
       return;
     }
 
@@ -78,8 +89,37 @@ function formatFakeCompactionSummary(prompt: string) {
   ].join("\n");
 }
 
-function formatReadFileAnswer(toolResults: ModelRequest["messages"]) {
+function parseMutationToolCall(prompt: string): ModelEvent | undefined {
+  const match = /\b(write_file|edit_file|apply_patch)\s+({[\s\S]*})\s*$/i.exec(prompt.trim());
+
+  if (!match) {
+    return undefined;
+  }
+
+  try {
+    return {
+      type: "tool_call",
+      id: `fake_${match[1]}_${Date.now()}`,
+      name: match[1].toLowerCase(),
+      input: JSON.parse(match[2])
+    };
+  } catch {
+    return undefined;
+  }
+}
+
+function formatToolResultAnswer(toolResults: ModelRequest["messages"]) {
   const files = toolResults.map((message) => parseToolMessage(message.content));
+
+  if (files.some((file) => file.tool !== "read_file")) {
+    return [
+      `I received ${files.length} tool result${files.length === 1 ? "" : "s"}.\n`,
+      ...files.map((file, index) => {
+        return [`\nTool ${index + 1}: ${file.tool}`, "```text", file.content, "```"].join("\n");
+      })
+    ].join("\n");
+  }
+
   const lines = [`I read ${files.length} file${files.length === 1 ? "" : "s"}.\n`];
 
   files.forEach((file, index) => {
@@ -97,14 +137,16 @@ function formatReadFileAnswer(toolResults: ModelRequest["messages"]) {
 
 function parseToolMessage(content: string) {
   try {
-    const parsed = JSON.parse(content) as { path?: unknown; content?: unknown };
+    const parsed = JSON.parse(content) as { tool?: unknown; path?: unknown; content?: unknown };
 
     return {
+      tool: typeof parsed.tool === "string" ? parsed.tool : "unknown",
       path: typeof parsed.path === "string" ? parsed.path : "unknown",
       content: typeof parsed.content === "string" ? parsed.content : content
     };
   } catch {
     return {
+      tool: "unknown",
       path: "unknown",
       content
     };

@@ -242,6 +242,7 @@ export class SessionRunner {
 
     try {
       const result = await this.toolRegistry.execute(modelEvent.name, modelEvent.input, {
+        sessionId: session.id,
         workspaceFolder,
         signal
       });

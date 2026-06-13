@@ -20,6 +20,8 @@ export type SessionEventType =
   | "session.interrupt.requested"
   | "session.compaction.started"
   | "session.compaction.ended"
+  | "permission.asked"
+  | "permission.replied"
   | "assistant.text.delta"
   | "assistant.text.ended"
   | "tool.called"

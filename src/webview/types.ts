@@ -42,6 +42,16 @@ export type AvailableModel = {
   outputTokenLimit?: number;
 };
 
+export type PermissionReply = "once" | "always" | "reject";
+
+export type PermissionRequest = {
+  id: string;
+  sessionId: string;
+  action: string;
+  resource: string;
+  description: string;
+};
+
 export type HostToWebviewMessage =
   | {
       type: "events.replace";
@@ -86,6 +96,10 @@ export type HostToWebviewMessage =
       modelsByProvider: Partial<Record<ModelProviderId, AvailableModel[]>>;
       selectedModel: ModelRef;
       error?: string;
+    }
+  | {
+      type: "permission.request";
+      request: PermissionRequest;
     };
 
 export type WebviewToHostMessage =
@@ -127,4 +141,9 @@ export type WebviewToHostMessage =
   | {
       type: "model.select";
       model: ModelRef;
+    }
+  | {
+      type: "permission.reply";
+      permissionId: string;
+      reply: PermissionReply;
     };

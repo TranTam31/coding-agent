@@ -267,6 +267,8 @@ Every tool must:
 - Convert output into concise model-facing text.
 - Persist success or failure events.
 
+Mutation tools must declare permission metadata and must not execute if `PermissionService` is unavailable. Provider adapters should expose registered tools through native tool/function declarations so real models can call the same registry path as the fake model.
+
 Built-in tools for the prototype:
 
 - `read_file`: read text files, with pagination.
