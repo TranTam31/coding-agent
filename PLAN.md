@@ -6,10 +6,10 @@ This file tracks implementation progress for the Coding Agent VS Code Extension.
 
 ## Current Status
 
-- Project phase: Milestone 7 in progress.
+- Project phase: Milestone 8 in progress.
 - Repository state: TypeScript VS Code extension shell with durable session/event foundations, session history projection, fake agent loop, real model provider layer, basic multi-session UI, read-oriented tool registry, and React/Tailwind prompt file context UI.
 - Implemented code: command activation, webview panel, React webview, Tailwind styling, prompt input, session store, session input inbox, event log, event replay, history projector, persistent context compactor, fake model client, dynamic selected model client, Gemini provider, Groq provider, Ollama provider, VS Code SecretStorage API key/token handling, provider endpoint config, model settings dialog, model selector, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching, `@file` context resolution with selector, open/preview-tab context file chips, read/list/glob/grep/todo tools, mutation tools, terminal tools, permission service/store, approval UI, tool call/result events.
-- Next recommended step: validate terminal tool calling with real Ollama/Gemini/Groq models, then add stronger destructive-command guardrails and tests.
+- Next recommended step: add stronger resume/error-recovery behavior after reload/interruption and expand tests around tool execution.
 
 ## Progress Rules
 
@@ -195,7 +195,7 @@ Checklist:
 - [x] Add timeout handling.
 - [x] Persist command result events.
 - [x] Let the agent continue after command output.
-- [ ] Add guardrails for destructive commands.
+- [x] Add guardrails for destructive commands.
 
 Expected outcome:
 
@@ -210,12 +210,12 @@ Goal: make the prototype durable enough for continued development.
 Checklist:
 
 - [ ] Add full interrupt/resume behavior.
-- [ ] Add compaction.
-- [ ] Add session replay after reload.
+- [x] Add compaction.
+- [x] Add session replay after reload.
 - [ ] Add error recovery paths.
 - [ ] Add fake-model integration tests for loop scenarios.
-- [ ] Add tool unit tests.
-- [ ] Add basic telemetry/logging hooks for debugging local runs.
+- [x] Add tool unit tests.
+- [x] Add basic telemetry/logging hooks for debugging local runs.
 
 Expected outcome:
 
@@ -314,7 +314,11 @@ Expected outcome:
 - Updated `FakeModelClient` so terminal tools can be tested deterministically with prompts like `run_command {"command":"..."}`.
 - Verified the project compiles with `npm run compile`.
 - Updated terminal execution UX so the visible VS Code terminal runs the original command directly, matching Copilot-style behavior. The tool still runs a hidden duplicate process to capture stdout/stderr/exit-code for the agent loop because the VS Code Terminal API does not expose stdout directly.
+- Started Milestone 8 by adding destructive-command guardrails for terminal execution. The guard blocks high-risk commands such as `rm -rf`, `Remove-Item -Recurse -Force`, `git reset --hard`, `git clean -fdx`, disk formatting, and reboot/shutdown commands before approval or execution.
+- Added a no-dependency Node test harness with `npm test`, using a single-process runner so tests work in restricted environments.
+- Added unit tests for command-safety guardrails and a context-projection test that verifies persisted compaction summaries are combined with recent raw messages.
+- Verified `npm test` passes.
 
 ## Next Step
 
-Validate terminal tool calling with real Gemini, Groq, and Ollama models, then add stronger destructive-command guardrails and tests.
+Add resume/error-recovery behavior after reload/interruption, then expand fake-model integration tests around tool success/failure loops.

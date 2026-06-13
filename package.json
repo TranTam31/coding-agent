@@ -30,6 +30,7 @@
     "compile:webview": "npm run compile:webview:css && npm run compile:webview:js",
     "compile:webview:css": "tailwindcss -i ./src/webview/styles.css -o ./dist/webview/index.css --minify",
     "compile:webview:js": "esbuild ./src/webview/index.tsx --bundle --format=iife --platform=browser --jsx=automatic --outfile=./dist/webview/index.js",
+    "test": "npm run compile && node dist/test/run.js",
     "watch": "tsc -watch -p ./tsconfig.json",
     "vscode:prepublish": "npm run compile"
   },

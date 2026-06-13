@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import * as path from "node:path";
 import * as vscode from "vscode";
+import { assessCommandSafety } from "./commandSafety";
 import type { ToolDefinition } from "./ToolRegistry";
 
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -93,6 +94,13 @@ function parseInput(input: unknown): RunCommandInput {
     throw new Error("run_command input must be { command: string }.");
   }
 
+  const command = input.command.trim();
+  const safety = assessCommandSafety(command);
+
+  if (!safety.safe) {
+    throw new Error(`Refusing to run potentially destructive command: ${safety.reason}.`);
+  }
+
   if (input.cwd !== undefined && typeof input.cwd !== "string") {
     throw new Error("run_command cwd must be a string.");
   }
@@ -106,7 +114,7 @@ function parseInput(input: unknown): RunCommandInput {
   }
 
   return {
-    command: input.command.trim(),
+    command,
     cwd: input.cwd,
     timeoutMs: input.timeoutMs === undefined ? undefined : Math.min(input.timeoutMs, MAX_TIMEOUT_MS),
     reason: input.reason

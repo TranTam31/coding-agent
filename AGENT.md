@@ -233,6 +233,8 @@ Terminal commands require separate approval. Later, command-prefix approvals can
 
 Terminal execution is implemented through `run_command` and `bash` tools. Commands must run inside the workspace, require approval, open a visible VS Code terminal, capture stdout/stderr with output limits, and enforce timeouts. The current implementation shows the original command in a visible VS Code terminal and runs a hidden duplicate process to capture output because the VS Code Terminal API does not expose stdout directly. Stronger destructive-command detection is still required before treating terminal access as production safe.
 
+Terminal guardrails must reject obviously destructive commands before approval, including recursive force deletion, destructive git reset/clean commands, disk formatting/partitioning, raw disk writes, and shutdown/reboot commands. User approval is not enough for these commands in the prototype.
+
 ## Tool Registry
 
 The tool registry is the boundary between the model and side effects.
