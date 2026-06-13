@@ -6,10 +6,10 @@ This file tracks implementation progress for the Coding Agent VS Code Extension.
 
 ## Current Status
 
-- Project phase: Milestone 3 complete.
-- Repository state: TypeScript VS Code extension shell with durable session/event foundations, fake agent loop, and basic multi-session UI.
-- Implemented code: command activation, webview panel, prompt input, session store, session input inbox, event log, event replay, fake model client, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching.
-- Next recommended step: Milestone 4, add tool registry and safe read-oriented workspace tools.
+- Project phase: Milestone 4 complete.
+- Repository state: TypeScript VS Code extension shell with durable session/event foundations, fake agent loop, basic multi-session UI, read-oriented tool registry, and prompt file context attachments.
+- Implemented code: command activation, webview panel, prompt input, session store, session input inbox, event log, event replay, fake model client, session runner, visibly streamed assistant text, single icon submit/interrupt action, fixed-bottom composer, basic session creation/switching, `@file` context resolution, active-editor file attachment, read/list/glob/grep/todo tools, tool call/result events.
+- Next recommended step: Milestone 5, connect the runtime to a real model adapter while keeping the fake model useful for deterministic tests.
 
 ## Progress Rules
 
@@ -97,16 +97,16 @@ Goal: let the model interact with safe, read-oriented workspace tools.
 
 Checklist:
 
-- [ ] Add `ToolRegistry`.
-- [ ] Add tool input/output schema validation.
-- [ ] Add `read_file`.
-- [ ] Add `list_dir`.
-- [ ] Add `grep`.
-- [ ] Add `glob`.
-- [ ] Add `todo_write`.
-- [ ] Add tool call/result events.
-- [ ] Teach `FakeModelClient` to emit a tool call for testing.
-- [ ] Continue the agent loop after a tool result.
+- [x] Add `ToolRegistry`.
+- [x] Add tool input/output schema validation.
+- [x] Add `read_file`.
+- [x] Add `list_dir`.
+- [x] Add `grep`.
+- [x] Add `glob`.
+- [x] Add `todo_write`.
+- [x] Add tool call/result events.
+- [x] Teach `FakeModelClient` to emit a tool call for testing.
+- [x] Continue the agent loop after a tool result.
 
 Expected outcome:
 
@@ -223,7 +223,13 @@ Expected outcome:
 - Fixed the composer to stay at the bottom while only the conversation/event area scrolls.
 - Added minimal multi-session foundation in the UI and service layer: create a new session and switch the current session from a selector.
 - Verified the project compiles with `npm run compile`.
+- Completed Milestone 4 by adding `ToolRegistry` and the first read-oriented workspace tools: `read_file`, `list_dir`, `grep`, `glob`, and `todo_write`.
+- Extended `ModelClient` and `SessionRunner` to support model-emitted tool calls, durable `tool.called`, `tool.success`, and `tool.failed` events, and continuation turns after tool results.
+- Added prompt file-context resolution for `@file` mentions, including workspace search, duplicate removal, missing-file diagnostics, and ambiguous-file diagnostics.
+- Added a `+` button in the composer that attaches the active VS Code editor file as prompt context.
+- Updated the fake model demo so prompts like `Đọc file @package.json @src/extension.ts` call `read_file` for each unique file and stream a response containing each file's content.
+- Verified the project compiles with `npm run compile`.
 
 ## Next Step
 
-Implement Milestone 4: add `ToolRegistry`, schema validation, and safe read tools such as `read_file`, `list_dir`, `grep`, `glob`, and `todo_write`; teach the fake model to emit a tool call and continue after the tool result.
+Implement Milestone 5: add provider settings and a first real model adapter, while preserving `FakeModelClient` for local deterministic testing.

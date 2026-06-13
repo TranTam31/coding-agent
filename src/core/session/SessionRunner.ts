@@ -1,13 +1,21 @@
 import { createId } from "./id";
 import { EventLog } from "./EventLog";
 import { SessionStore } from "./SessionStore";
-import type { ModelClient, ModelMessage } from "../model/ModelClient";
+import type { ModelClient, ModelMessage, PromptContextFile } from "../model/ModelClient";
+import type { ToolRegistry } from "../tools/ToolRegistry";
+import { getPrimaryWorkspaceFolder } from "../tools/workspace";
 import type { SessionInput, SessionRecord } from "./types";
 
 const DEFAULT_MAX_PROVIDER_TURNS = 25;
 
 export type SessionRunnerOptions = {
   maxProviderTurnsPerActivity?: number;
+};
+
+export type SessionRunRequest = {
+  session: SessionRecord;
+  input: SessionInput;
+  contextFiles: PromptContextFile[];
 };
 
 export class SessionRunner {
@@ -17,6 +25,7 @@ export class SessionRunner {
     private readonly store: SessionStore,
     private readonly eventLog: EventLog,
     private readonly modelClient: ModelClient,
+    private readonly toolRegistry: ToolRegistry,
     private readonly options: SessionRunnerOptions = {}
   ) {}
 
@@ -24,7 +33,7 @@ export class SessionRunner {
     return this.currentRun !== undefined;
   }
 
-  async run(session: SessionRecord, input: SessionInput) {
+  async run(request: SessionRunRequest) {
     if (this.currentRun) {
       throw new Error("A session activity is already running.");
     }
@@ -33,16 +42,16 @@ export class SessionRunner {
     this.currentRun = abortController;
 
     try {
-      await this.store.updateSessionStatus(session.id, "running");
-      await this.runActivity(session, input, abortController.signal);
+      await this.store.updateSessionStatus(request.session.id, "running");
+      await this.runActivity(request, abortController.signal);
     } catch (error) {
       if (abortController.signal.aborted) {
-        await this.store.updateSessionStatus(session.id, "interrupted");
+        await this.store.updateSessionStatus(request.session.id, "interrupted");
         return;
       }
 
-      await this.store.updateSessionStatus(session.id, "failed");
-      await this.eventLog.append(session.id, "session.step.failed", {
+      await this.store.updateSessionStatus(request.session.id, "failed");
+      await this.eventLog.append(request.session.id, "session.step.failed", {
         message: error instanceof Error ? error.message : "Unknown runner failure"
       });
       throw error;
@@ -64,70 +73,73 @@ export class SessionRunner {
     return true;
   }
 
-  private async runActivity(session: SessionRecord, input: SessionInput, signal: AbortSignal) {
+  private async runActivity(request: SessionRunRequest, signal: AbortSignal) {
     const maxTurns = this.options.maxProviderTurnsPerActivity ?? DEFAULT_MAX_PROVIDER_TURNS;
+    const messages: ModelMessage[] = [
+      {
+        role: "user",
+        content: request.input.prompt
+      }
+    ];
 
     for (let turn = 1; turn <= maxTurns; turn += 1) {
       if (signal.aborted) {
-        await this.eventLog.append(session.id, "session.interrupt.requested", {
-          inputId: input.id
+        await this.eventLog.append(request.session.id, "session.interrupt.requested", {
+          inputId: request.input.id
         });
-        await this.store.updateSessionStatus(session.id, "interrupted");
+        await this.store.updateSessionStatus(request.session.id, "interrupted");
         return;
       }
 
-      const finished = await this.runProviderTurn(session, input, turn, signal);
+      const result = await this.runProviderTurn(request, messages, turn, signal);
+      messages.push(...result.messages);
 
       if (signal.aborted) {
-        await this.eventLog.append(session.id, "session.interrupt.requested", {
-          inputId: input.id
+        await this.eventLog.append(request.session.id, "session.interrupt.requested", {
+          inputId: request.input.id
         });
-        await this.store.updateSessionStatus(session.id, "interrupted");
+        await this.store.updateSessionStatus(request.session.id, "interrupted");
         return;
       }
 
-      if (finished) {
-        await this.store.updateSessionStatus(session.id, "completed");
+      if (result.finished) {
+        await this.store.updateSessionStatus(request.session.id, "completed");
         return;
       }
     }
 
-    await this.store.updateSessionStatus(session.id, "failed");
+    await this.store.updateSessionStatus(request.session.id, "failed");
     throw new Error(`Step limit exceeded after ${maxTurns} provider turns.`);
   }
 
   private async runProviderTurn(
-    session: SessionRecord,
-    input: SessionInput,
+    request: SessionRunRequest,
+    messages: ModelMessage[],
     turn: number,
     signal: AbortSignal
   ) {
     const stepId = createId("step");
     const textId = createId("text");
     let assistantText = "";
+    const nextMessages: ModelMessage[] = [];
+    let sawToolCall = false;
 
-    await this.eventLog.append(session.id, "session.step.started", {
+    await this.eventLog.append(request.session.id, "session.step.started", {
       stepId,
-      inputId: input.id,
+      inputId: request.input.id,
       turn
     });
 
-    const messages: ModelMessage[] = [
-      {
-        role: "user",
-        content: input.prompt
-      }
-    ];
-
     for await (const modelEvent of this.modelClient.stream({
-      sessionId: session.id,
-      inputId: input.id,
+      sessionId: request.session.id,
+      inputId: request.input.id,
       messages,
+      contextFiles: request.contextFiles,
       signal
     })) {
       if (modelEvent.type === "text_delta") {
         assistantText += modelEvent.delta;
-        await this.eventLog.append(session.id, "assistant.text.delta", {
+        await this.eventLog.append(request.session.id, "assistant.text.delta", {
           stepId,
           textId,
           delta: modelEvent.delta
@@ -135,37 +147,121 @@ export class SessionRunner {
         continue;
       }
 
+      if (modelEvent.type === "tool_call") {
+        sawToolCall = true;
+        const toolMessage = await this.executeToolCall(request.session, stepId, modelEvent, signal);
+        nextMessages.push(toolMessage);
+        continue;
+      }
+
       if (modelEvent.type === "finish") {
-        await this.eventLog.append(session.id, "assistant.text.ended", {
+        await this.eventLog.append(request.session.id, "assistant.text.ended", {
           stepId,
           textId,
           text: assistantText
         });
 
-        await this.eventLog.append(session.id, "session.step.ended", {
+        await this.eventLog.append(request.session.id, "session.step.ended", {
           stepId,
-          inputId: input.id,
+          inputId: request.input.id,
           turn,
-          finishReason: modelEvent.reason
+          finishReason: sawToolCall ? "tool_calls" : modelEvent.reason
         });
 
-        return modelEvent.reason === "stop";
+        return {
+          finished: modelEvent.reason === "stop" && !sawToolCall,
+          messages: nextMessages
+        };
       }
     }
 
-    await this.eventLog.append(session.id, "assistant.text.ended", {
+    await this.eventLog.append(request.session.id, "assistant.text.ended", {
       stepId,
       textId,
       text: assistantText
     });
 
-    await this.eventLog.append(session.id, "session.step.ended", {
+    await this.eventLog.append(request.session.id, "session.step.ended", {
       stepId,
-      inputId: input.id,
+      inputId: request.input.id,
       turn,
-      finishReason: "stop"
+      finishReason: sawToolCall ? "tool_calls" : "stop"
     });
 
-    return true;
+    return {
+      finished: !sawToolCall,
+      messages: nextMessages
+    };
+  }
+
+  private async executeToolCall(
+    session: SessionRecord,
+    stepId: string,
+    modelEvent: { id: string; name: string; input: unknown },
+    signal: AbortSignal
+  ): Promise<ModelMessage> {
+    await this.eventLog.append(session.id, "tool.called", {
+      stepId,
+      toolCallId: modelEvent.id,
+      name: modelEvent.name,
+      input: modelEvent.input
+    });
+
+    const workspaceFolder = getPrimaryWorkspaceFolder();
+
+    if (!workspaceFolder) {
+      const message = "No workspace folder is open.";
+      await this.eventLog.append(session.id, "tool.failed", {
+        stepId,
+        toolCallId: modelEvent.id,
+        name: modelEvent.name,
+        message
+      });
+
+      return {
+        role: "tool",
+        content: JSON.stringify({ error: message })
+      };
+    }
+
+    try {
+      const result = await this.toolRegistry.execute(modelEvent.name, modelEvent.input, {
+        workspaceFolder,
+        signal
+      });
+
+      await this.eventLog.append(session.id, "tool.success", {
+        stepId,
+        toolCallId: modelEvent.id,
+        name: modelEvent.name,
+        content: result.content,
+        data: result.data
+      });
+
+      return {
+        role: "tool",
+        content: JSON.stringify({
+          tool: modelEvent.name,
+          path: typeof result.data?.path === "string" ? result.data.path : undefined,
+          content: result.content
+        })
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Tool execution failed.";
+      await this.eventLog.append(session.id, "tool.failed", {
+        stepId,
+        toolCallId: modelEvent.id,
+        name: modelEvent.name,
+        message
+      });
+
+      return {
+        role: "tool",
+        content: JSON.stringify({
+          tool: modelEvent.name,
+          error: message
+        })
+      };
+    }
   }
 }

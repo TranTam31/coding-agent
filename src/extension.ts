@@ -1,15 +1,19 @@
 import * as vscode from "vscode";
+import { resolvePromptContext } from "./core/context/PromptContextResolver";
 import { FakeModelClient } from "./core/model/FakeModelClient";
 import { EventLog } from "./core/session/EventLog";
 import { SessionRunner } from "./core/session/SessionRunner";
 import { SessionService } from "./core/session/SessionService";
 import { SessionStore } from "./core/session/SessionStore";
 import type { SessionEvent, SessionRecord } from "./core/session/types";
+import { createDefaultToolRegistry } from "./core/tools/defaultTools";
+import { getPrimaryWorkspaceFolder, toRelativePath } from "./core/tools/workspace";
 
 type WebviewMessage =
   | {
       type: "prompt.submit";
       prompt: string;
+      attachedFiles: string[];
     }
   | {
       type: "ready";
@@ -23,6 +27,9 @@ type WebviewMessage =
   | {
       type: "session.switch";
       sessionId: string;
+    }
+  | {
+      type: "activeFile.add";
     };
 
 export function activate(context: vscode.ExtensionContext) {
@@ -30,7 +37,8 @@ export function activate(context: vscode.ExtensionContext) {
   const eventLog = new EventLog(context.workspaceState);
   const sessionService = new SessionService(sessionStore, eventLog, getWorkspaceUri());
   const modelClient = new FakeModelClient();
-  const sessionRunner = new SessionRunner(sessionStore, eventLog, modelClient);
+  const toolRegistry = createDefaultToolRegistry();
+  const sessionRunner = new SessionRunner(sessionStore, eventLog, modelClient, toolRegistry);
 
   const openPanelCommand = vscode.commands.registerCommand("codingAgent.openPanel", () => {
     AgentPanel.show(context.extensionUri, sessionService, sessionRunner);
@@ -96,7 +104,7 @@ class AgentPanel {
         this.postLiveEvent("system", "Panel ready. Submit a prompt to create durable session events.");
         return;
       case "prompt.submit":
-        void this.handlePrompt(message.prompt);
+        void this.handlePrompt(message.prompt, message.attachedFiles);
         return;
       case "interrupt":
         void this.handleInterrupt();
@@ -107,10 +115,13 @@ class AgentPanel {
       case "session.switch":
         void this.handleSwitchSession(message.sessionId);
         return;
+      case "activeFile.add":
+        this.sendActiveFile();
+        return;
     }
   }
 
-  private async handlePrompt(prompt: string) {
+  private async handlePrompt(prompt: string, attachedFiles: string[]) {
     const trimmed = prompt.trim();
 
     if (!trimmed) {
@@ -120,9 +131,33 @@ class AgentPanel {
 
     try {
       this.setRunning(true);
+      const workspaceFolder = getPrimaryWorkspaceFolder();
+
+      if (!workspaceFolder) {
+        throw new Error("Open a workspace folder before running the agent.");
+      }
+
+      const context = await resolvePromptContext({
+        prompt: trimmed,
+        attachedFiles,
+        workspaceFolder
+      });
+
+      for (const diagnostic of context.diagnostics) {
+        this.postLiveEvent("error", diagnostic);
+      }
+
+      if (context.diagnostics.length > 0) {
+        return;
+      }
+
       const result = await this.sessionService.submitPrompt(trimmed);
       this.refreshSessionState();
-      await this.sessionRunner.run(result.session, result.input);
+      await this.sessionRunner.run({
+        session: result.session,
+        input: result.input,
+        contextFiles: context.contextFiles
+      });
     } catch (error) {
       this.postLiveEvent("error", error instanceof Error ? error.message : "Failed to submit prompt.");
     } finally {
@@ -153,6 +188,31 @@ class AgentPanel {
 
     await this.sessionService.switchSession(sessionId);
     this.refreshSessionState();
+  }
+
+  private sendActiveFile() {
+    const workspaceFolder = getPrimaryWorkspaceFolder();
+    const activeEditor = vscode.window.activeTextEditor;
+
+    if (!workspaceFolder || !activeEditor) {
+      this.postLiveEvent("error", "No active editor file is available.");
+      return;
+    }
+
+    const activeUri = activeEditor.document.uri;
+
+    if (activeUri.scheme !== "file" || !activeUri.fsPath.startsWith(workspaceFolder.uri.fsPath)) {
+      this.postLiveEvent("error", "The active editor is not a file inside the current workspace.");
+      return;
+    }
+
+    this.panel.webview.postMessage({
+      type: "activeFile.added",
+      file: {
+        path: toRelativePath(activeUri, workspaceFolder),
+        name: activeEditor.document.fileName.split(/[\\/]/).pop() ?? "active file"
+      }
+    });
   }
 
   private refreshSessionState() {
@@ -348,12 +408,46 @@ class AgentPanel {
 
     .composer {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 36px;
+      grid-template-columns: 32px minmax(0, 1fr) 36px;
       gap: 8px;
       align-items: end;
       border-top: 1px solid var(--agent-border);
       padding: 12px 16px 14px;
       background: var(--agent-bg-soft);
+    }
+
+    .attachments {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      min-height: 0;
+    }
+
+    .attachment {
+      display: inline-flex;
+      max-width: 100%;
+      align-items: center;
+      gap: 6px;
+      border: 1px solid var(--agent-border);
+      border-radius: 4px;
+      padding: 3px 6px;
+      color: var(--vscode-button-secondaryForeground);
+      background: var(--vscode-button-secondaryBackground);
+      font-size: 12px;
+    }
+
+    .attachment span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .attachment button {
+      min-width: 18px;
+      min-height: 18px;
+      background: transparent;
+      color: inherit;
     }
 
     textarea {
@@ -427,6 +521,13 @@ class AgentPanel {
     <section id="events" class="events" aria-live="polite"></section>
 
     <form id="composer" class="composer">
+      <div id="attachments" class="attachments"></div>
+      <button type="button" id="addActiveFile" title="Add active editor file" aria-label="Add active editor file">
+        <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 5v14"></path>
+          <path d="M5 12h14"></path>
+        </svg>
+      </button>
       <textarea id="prompt" placeholder="Describe a coding task..." spellcheck="true"></textarea>
       <button type="submit" id="actionButton" title="Submit" aria-label="Submit"></button>
     </form>
@@ -438,9 +539,12 @@ class AgentPanel {
     const composer = document.getElementById("composer");
     const promptInput = document.getElementById("prompt");
     const actionButton = document.getElementById("actionButton");
+    const addActiveFileButton = document.getElementById("addActiveFile");
+    const attachments = document.getElementById("attachments");
     const sessionSelect = document.getElementById("sessionSelect");
     const newSessionButton = document.getElementById("newSession");
     let isRunning = false;
+    let attachedFiles = [];
 
     setRunning(false);
 
@@ -453,9 +557,13 @@ class AgentPanel {
       }
 
       const prompt = promptInput.value;
-      vscode.postMessage({ type: "prompt.submit", prompt });
+      vscode.postMessage({ type: "prompt.submit", prompt, attachedFiles });
       promptInput.value = "";
       promptInput.focus();
+    });
+
+    addActiveFileButton.addEventListener("click", () => {
+      vscode.postMessage({ type: "activeFile.add" });
     });
 
     newSessionButton.addEventListener("click", () => {
@@ -482,6 +590,10 @@ class AgentPanel {
 
       if (message.type === "run.state") {
         setRunning(message.isRunning);
+      }
+
+      if (message.type === "activeFile.added") {
+        addAttachedFile(message.file);
       }
 
       if (message.type === "event.append") {
@@ -534,6 +646,43 @@ class AgentPanel {
       }
     }
 
+    function addAttachedFile(file) {
+      if (attachedFiles.includes(file.path)) {
+        return;
+      }
+
+      attachedFiles = [...attachedFiles, file.path];
+      renderAttachments();
+    }
+
+    function removeAttachedFile(path) {
+      attachedFiles = attachedFiles.filter((filePath) => filePath !== path);
+      renderAttachments();
+    }
+
+    function renderAttachments() {
+      attachments.replaceChildren();
+
+      for (const path of attachedFiles) {
+        const chip = document.createElement("div");
+        chip.className = "attachment";
+        chip.title = path;
+
+        const label = document.createElement("span");
+        label.textContent = path;
+
+        const remove = document.createElement("button");
+        remove.type = "button";
+        remove.title = "Remove " + path;
+        remove.setAttribute("aria-label", "Remove " + path);
+        remove.textContent = "x";
+        remove.addEventListener("click", () => removeAttachedFile(path));
+
+        chip.append(label, remove);
+        attachments.append(chip);
+      }
+    }
+
     function appendAssistantDelta(textId, delta, timestamp) {
       let item = document.querySelector('[data-text-id="' + textId + '"]');
 
@@ -573,6 +722,7 @@ class AgentPanel {
     function setRunning(nextIsRunning) {
       isRunning = nextIsRunning;
       promptInput.disabled = isRunning;
+      addActiveFileButton.disabled = isRunning;
       sessionSelect.disabled = isRunning || sessionSelect.options.length === 0 || sessionSelect.value === "";
       newSessionButton.disabled = isRunning;
       actionButton.title = isRunning ? "Interrupt" : "Submit";
@@ -644,6 +794,11 @@ function getEventKind(event: SessionEvent): "agent" | "error" | "system" | "user
       return "agent";
     case "session.step.failed":
       return "error";
+    case "tool.failed":
+      return "error";
+    case "tool.called":
+    case "tool.success":
+      return "system";
     case "session.created":
     case "session.input.promoted":
     case "session.step.started":
@@ -670,6 +825,12 @@ function formatSessionEvent(event: SessionEvent) {
       return `Agent step failed: ${String(event.data.message ?? "Unknown error")}.`;
     case "session.interrupt.requested":
       return "Interrupt requested for the active session.";
+    case "tool.called":
+      return `Tool called: ${String(event.data.name ?? "unknown")}.`;
+    case "tool.success":
+      return `Tool succeeded: ${String(event.data.name ?? "unknown")}.`;
+    case "tool.failed":
+      return `Tool failed: ${String(event.data.name ?? "unknown")} - ${String(event.data.message ?? "Unknown error")}.`;
     case "assistant.text.delta":
       return undefined;
     case "assistant.text.ended":

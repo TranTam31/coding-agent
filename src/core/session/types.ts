@@ -19,7 +19,10 @@ export type SessionEventType =
   | "session.step.failed"
   | "session.interrupt.requested"
   | "assistant.text.delta"
-  | "assistant.text.ended";
+  | "assistant.text.ended"
+  | "tool.called"
+  | "tool.success"
+  | "tool.failed";
 
 export type SessionRecord = {
   id: string;
