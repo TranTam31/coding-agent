@@ -5,6 +5,7 @@ import { globTool } from "./glob";
 import { grepTool } from "./grep";
 import { listDirTool } from "./listDir";
 import { readFileTool } from "./readFile";
+import { bashTool, runCommandTool } from "./runCommand";
 import { todoWriteTool } from "./todoWrite";
 import { ToolRegistry } from "./ToolRegistry";
 import { writeFileTool } from "./writeFile";
@@ -20,6 +21,8 @@ export function createDefaultToolRegistry(permissionService?: PermissionService)
   registry.register(writeFileTool);
   registry.register(editFileTool);
   registry.register(applyPatchTool);
+  registry.register(runCommandTool);
+  registry.register(bashTool);
 
   return registry;
 }

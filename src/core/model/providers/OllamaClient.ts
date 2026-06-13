@@ -54,7 +54,7 @@ export class OllamaProvider implements ModelProvider {
       throw new Error(`Ollama models request failed: ${response.status} ${await response.text()}`);
     }
 
-    const json = (await response.json()) as OllamaTagsResponse;
+    const json = await readJsonResponse<OllamaTagsResponse>(response, "Ollama models");
 
     return {
       models: (json.models ?? []).map(toAvailableModel)
@@ -132,7 +132,13 @@ export class OllamaModelClient implements ModelClient {
       signal: request.signal
     });
 
-    const json = (await response.json()) as OllamaChatResponse;
+    const json = await readJsonResponse<OllamaChatResponse>(response, "Ollama chat", (preview) => {
+      this.debugLogger?.log("Ollama non-JSON raw response", {
+        status: response.status,
+        ok: response.ok,
+        preview
+      });
+    });
 
     this.debugLogger?.log("Ollama raw response", {
       status: response.status,
@@ -290,4 +296,21 @@ function getHeaders(apiKey: string | undefined): Record<string, string> {
         Authorization: `Bearer ${apiKey.trim().replace(/^Bearer\s+/i, "")}`
       }
     : {};
+}
+
+async function readJsonResponse<T>(response: Response, label: string, onParseFailure?: (preview: string) => void): Promise<T> {
+  const text = await response.text();
+
+  try {
+    return JSON.parse(text) as T;
+  } catch (error) {
+    const preview = text.slice(0, 500);
+    onParseFailure?.(preview);
+
+    throw new Error(
+      `${label} endpoint returned non-JSON response (${response.status}). ` +
+        `This usually means the configured Ollama base URL points to a tunnel/proxy page instead of Ollama. ` +
+        `Response preview: ${preview}`
+    );
+  }
 }

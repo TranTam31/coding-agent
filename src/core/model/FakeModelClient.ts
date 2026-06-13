@@ -38,7 +38,7 @@ export class FakeModelClient implements ModelClient {
       return;
     }
 
-    const mutationToolCall = parseMutationToolCall(userPrompt);
+    const mutationToolCall = parseExplicitToolCall(userPrompt);
 
     if (mutationToolCall) {
       this.debugLogger?.log("Fake model response", {
@@ -118,8 +118,8 @@ function formatFakeCompactionSummary(prompt: string) {
   ].join("\n");
 }
 
-function parseMutationToolCall(prompt: string): ModelEvent | undefined {
-  const match = /\b(write_file|edit_file|apply_patch)\s+({[\s\S]*})\s*$/i.exec(prompt.trim());
+function parseExplicitToolCall(prompt: string): ModelEvent | undefined {
+  const match = /\b(write_file|edit_file|apply_patch|run_command|bash)\s+({[\s\S]*})\s*$/i.exec(prompt.trim());
 
   if (!match) {
     return undefined;
