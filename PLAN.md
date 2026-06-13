@@ -313,6 +313,7 @@ Expected outcome:
 - Started Milestone 7 by adding `run_command` and `bash` terminal tools. Both require explicit permission approval, run inside the workspace, support optional workspace-relative `cwd`, capture stdout/stderr with a 1 MiB total output limit, and enforce a maximum 120 second timeout.
 - Updated `FakeModelClient` so terminal tools can be tested deterministically with prompts like `run_command {"command":"..."}`.
 - Verified the project compiles with `npm run compile`.
+- Updated terminal execution UX so the visible VS Code terminal runs the original command directly, matching Copilot-style behavior. The tool still runs a hidden duplicate process to capture stdout/stderr/exit-code for the agent loop because the VS Code Terminal API does not expose stdout directly.
 
 ## Next Step
 

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import * as path from "node:path";
+import * as vscode from "vscode";
 import type { ToolDefinition } from "./ToolRegistry";
 
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -19,7 +20,7 @@ export const bashTool = createRunCommandTool("bash");
 function createRunCommandTool(name: "run_command" | "bash"): ToolDefinition {
   return {
     name,
-    description: "Run a terminal command in the current workspace after explicit user approval.",
+    description: "Run a terminal command in a visible VS Code terminal after explicit user approval.",
     inputSchema: {
       type: "object",
       properties: {
@@ -54,12 +55,14 @@ function createRunCommandTool(name: "run_command" | "bash"): ToolDefinition {
     execute: async (input, context) => {
       const parsed = parseInput(input);
       const cwd = resolveCwd(context.workspaceFolder.uri.fsPath, parsed.cwd);
-      const result = await runCommand(parsed.command, cwd, parsed.timeoutMs ?? DEFAULT_TIMEOUT_MS, context.signal);
+      const terminalName = showVisibleTerminal(parsed.command, cwd);
+      const result = await captureCommand(parsed.command, cwd, parsed.timeoutMs ?? DEFAULT_TIMEOUT_MS, context.signal);
 
       return {
         content: [
           `Command: ${parsed.command}`,
           `CWD: ${cwd}`,
+          `Visible terminal: ${terminalName}`,
           `Exit code: ${result.exitCode ?? "terminated"}`,
           `Timed out: ${result.timedOut ? "yes" : "no"}`,
           "",
@@ -73,6 +76,7 @@ function createRunCommandTool(name: "run_command" | "bash"): ToolDefinition {
         data: {
           command: parsed.command,
           cwd,
+          terminalName,
           exitCode: result.exitCode,
           timedOut: result.timedOut,
           stdout: result.stdout,
@@ -124,7 +128,19 @@ function resolveCwd(workspaceRoot: string, cwd: string | undefined) {
   return resolved;
 }
 
-function runCommand(command: string, cwd: string, timeoutMs: number, signal: AbortSignal) {
+function showVisibleTerminal(command: string, cwd: string) {
+  const terminalName = `Coding Agent: ${command.slice(0, 40)}`;
+  const terminal = vscode.window.createTerminal({
+    name: terminalName,
+    cwd
+  });
+
+  terminal.show(false);
+  terminal.sendText(command, true);
+  return terminalName;
+}
+
+function captureCommand(command: string, cwd: string, timeoutMs: number, signal: AbortSignal) {
   return new Promise<{
     exitCode?: number | null;
     timedOut: boolean;

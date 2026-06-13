@@ -231,7 +231,7 @@ Approval replies:
 
 Terminal commands require separate approval. Later, command-prefix approvals can be added, such as allowing `npm test` or `npm run lint`. The prototype can approve by full command string.
 
-Terminal execution is implemented through `run_command` and `bash` tools. Commands must run inside the workspace, require approval, capture stdout/stderr with output limits, and enforce timeouts. Stronger destructive-command detection is still required before treating terminal access as production safe.
+Terminal execution is implemented through `run_command` and `bash` tools. Commands must run inside the workspace, require approval, open a visible VS Code terminal, capture stdout/stderr with output limits, and enforce timeouts. The current implementation shows the original command in a visible VS Code terminal and runs a hidden duplicate process to capture output because the VS Code Terminal API does not expose stdout directly. Stronger destructive-command detection is still required before treating terminal access as production safe.
 
 ## Tool Registry
 
