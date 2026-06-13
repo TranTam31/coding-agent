@@ -79,6 +79,7 @@ export class ModelService {
 
     if (!trimmed) {
       await this.secrets.delete(this.getSecretKey(providerId));
+      await this.clearCachedModels(providerId);
       return;
     }
 
@@ -100,6 +101,10 @@ export class ModelService {
           baseUrl: config.baseUrl.trim()
         }
       });
+
+      if (!config.baseUrl.trim()) {
+        await this.clearCachedModels(providerId);
+      }
     }
   }
 
@@ -114,10 +119,22 @@ export class ModelService {
       throw new Error(`Unknown provider: ${providerId}`);
     }
 
-    const result = await provider.listModels({
+    const config = {
       apiKey: await this.getApiKey(providerId),
       baseUrl: this.getProviderConfig(providerId).baseUrl
-    });
+    };
+
+    if (provider.info.requiresApiKey && !config.apiKey) {
+      await this.clearCachedModels(providerId);
+      throw new Error(`${provider.info.label} API key is required. Saved models for this provider were cleared.`);
+    }
+
+    if (provider.info.requiresBaseUrl && !config.baseUrl) {
+      await this.clearCachedModels(providerId);
+      throw new Error(`${provider.info.label} base URL is required. Saved models for this provider were cleared.`);
+    }
+
+    const result = await provider.listModels(config);
     const cache = this.getCachedModels();
 
     await this.workspaceState.update(MODEL_CACHE_KEY, {
@@ -174,6 +191,12 @@ export class ModelService {
 
   private getProviderConfigCache() {
     return this.workspaceState.get<ProviderConfigCache>(PROVIDER_CONFIG_KEY, {});
+  }
+
+  private async clearCachedModels(providerId: ModelProviderId) {
+    const cache = this.getCachedModels();
+    const { [providerId]: _removed, ...rest } = cache;
+    await this.workspaceState.update(MODEL_CACHE_KEY, rest);
   }
 
   private async isConfigured(provider: ProviderInfo) {

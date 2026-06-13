@@ -36,6 +36,10 @@ type WebviewMessage =
       sessionId: string;
     }
   | {
+      type: "session.delete";
+      sessionId: string;
+    }
+  | {
       type: "file.search";
       query: string;
       requestId: string;
@@ -171,6 +175,9 @@ class AgentPanel {
         return;
       case "session.switch":
         void this.handleSwitchSession(message.sessionId);
+        return;
+      case "session.delete":
+        void this.handleDeleteSession(message.sessionId);
         return;
       case "file.search":
         void this.searchFiles(message.query, message.requestId);
@@ -315,6 +322,17 @@ class AgentPanel {
 
     await this.sessionService.switchSession(sessionId);
     this.refreshSessionState();
+  }
+
+  private async handleDeleteSession(sessionId: string) {
+    if (this.sessionRunner.isRunning) {
+      this.postLiveEvent("error", "Cannot delete a session while the agent is running.");
+      return;
+    }
+
+    await this.sessionService.deleteSession(sessionId);
+    this.refreshSessionState();
+    this.postLiveEvent("system", "Session deleted.");
   }
 
   private sendOpenFiles() {

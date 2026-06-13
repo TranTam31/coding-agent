@@ -124,6 +124,10 @@ export type WebviewToHostMessage =
       sessionId: string;
     }
   | {
+      type: "session.delete";
+      sessionId: string;
+    }
+  | {
       type: "file.search";
       query: string;
       requestId: string;

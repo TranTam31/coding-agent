@@ -71,6 +71,22 @@ export class SessionStore {
     });
   }
 
+  async deleteSession(sessionId: string) {
+    const snapshot = this.getSnapshot();
+    const remainingSessions = snapshot.sessions.filter((session) => session.id !== sessionId);
+    const currentSessionId =
+      snapshot.currentSessionId === sessionId
+        ? [...remainingSessions].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0]?.id
+        : snapshot.currentSessionId;
+
+    await this.saveSnapshot({
+      sessions: remainingSessions,
+      inputs: snapshot.inputs.filter((input) => input.sessionId !== sessionId),
+      events: snapshot.events.filter((event) => event.sessionId !== sessionId),
+      currentSessionId
+    });
+  }
+
   async addInput(input: SessionInput) {
     const snapshot = this.getSnapshot();
     await this.saveSnapshot({

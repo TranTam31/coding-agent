@@ -8,6 +8,7 @@ import { Header } from "./components/Header";
 import { ModelSelector } from "./components/ModelSelector";
 import { ModelSettingsDialog } from "./components/ModelSettingsDialog";
 import { PermissionPrompt } from "./components/PermissionPrompt";
+import { SessionSidebar } from "./components/SessionSidebar";
 
 type SuggestionState = {
   requestId: string;
@@ -48,6 +49,7 @@ export function App() {
   const [modelError, setModelError] = useState<string | undefined>();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [permissionRequest, setPermissionRequest] = useState<PermissionRequest | undefined>();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     const listener = (event: MessageEvent<HostToWebviewMessage>) => {
@@ -107,64 +109,71 @@ export function App() {
   }, []);
 
   return (
-    <main className="grid h-screen grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden bg-[var(--vscode-editor-background)] text-[var(--vscode-foreground)]">
-      <Header
+    <main className="flex h-screen overflow-hidden bg-[var(--vscode-editor-background)] text-[var(--vscode-foreground)]">
+      <SessionSidebar
         sessions={sessions}
         currentSessionId={currentSessionId}
         isRunning={isRunning}
+        collapsed={sidebarCollapsed}
+        onToggle={() => setSidebarCollapsed((current) => !current)}
         onNewSession={() => vscode.postMessage({ type: "session.new" })}
         onSwitchSession={(sessionId) => vscode.postMessage({ type: "session.switch", sessionId })}
+        onDeleteSession={(sessionId) => vscode.postMessage({ type: "session.delete", sessionId })}
       />
 
-      <EventList events={events} />
+      <div className="grid min-w-0 flex-1 grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden">
+        <Header />
 
-      <div className="min-h-0">
-        <PermissionPrompt
-          request={permissionRequest}
-          onReply={(reply) => {
-            if (!permissionRequest) {
-              return;
+        <EventList events={events} />
+
+        <div className="min-h-0">
+          <PermissionPrompt
+            request={permissionRequest}
+            onReply={(reply) => {
+              if (!permissionRequest) {
+                return;
+              }
+
+              vscode.postMessage({ type: "permission.reply", permissionId: permissionRequest.id, reply });
+              setPermissionRequest(undefined);
+            }}
+          />
+
+          <Composer
+            prompt={prompt}
+            attachedFiles={attachedFiles}
+            openFiles={openFiles}
+            isRunning={isRunning}
+            suggestion={suggestion}
+            onPromptChange={(value, cursor) => {
+              setPrompt(value);
+              updateSuggestion(value, cursor, setSuggestion);
+            }}
+            onPromptReplace={(value, cursor) => {
+              setPrompt(value);
+              updateSuggestion(value, cursor, setSuggestion);
+            }}
+            onSubmit={() => {
+              vscode.postMessage({ type: "prompt.submit", prompt, attachedFiles });
+              setPrompt("");
+            }}
+            onInterrupt={() => vscode.postMessage({ type: "interrupt" })}
+            onToggleFile={(path) => {
+              setAttachedFiles((current) => (current.includes(path) ? current.filter((filePath) => filePath !== path) : [...current, path]));
+            }}
+            onCloseSuggestions={() => setSuggestion(undefined)}
+            modelSlot={
+              <ModelSelector
+                providers={providers}
+                modelsByProvider={modelsByProvider}
+                selectedModel={selectedModel}
+                isRunning={isRunning}
+                onSelect={(model) => vscode.postMessage({ type: "model.select", model })}
+                onOpenSettings={() => setSettingsOpen(true)}
+              />
             }
-
-            vscode.postMessage({ type: "permission.reply", permissionId: permissionRequest.id, reply });
-            setPermissionRequest(undefined);
-          }}
-        />
-
-        <Composer
-          prompt={prompt}
-          attachedFiles={attachedFiles}
-          openFiles={openFiles}
-          isRunning={isRunning}
-          suggestion={suggestion}
-          onPromptChange={(value, cursor) => {
-            setPrompt(value);
-            updateSuggestion(value, cursor, setSuggestion);
-          }}
-          onPromptReplace={(value, cursor) => {
-            setPrompt(value);
-            updateSuggestion(value, cursor, setSuggestion);
-          }}
-          onSubmit={() => {
-            vscode.postMessage({ type: "prompt.submit", prompt, attachedFiles });
-            setPrompt("");
-          }}
-          onInterrupt={() => vscode.postMessage({ type: "interrupt" })}
-          onToggleFile={(path) => {
-            setAttachedFiles((current) => (current.includes(path) ? current.filter((filePath) => filePath !== path) : [...current, path]));
-          }}
-          onCloseSuggestions={() => setSuggestion(undefined)}
-          modelSlot={
-            <ModelSelector
-              providers={providers}
-              modelsByProvider={modelsByProvider}
-              selectedModel={selectedModel}
-              isRunning={isRunning}
-              onSelect={(model) => vscode.postMessage({ type: "model.select", model })}
-              onOpenSettings={() => setSettingsOpen(true)}
-            />
-          }
-        />
+          />
+        </div>
       </div>
 
       <ModelSettingsDialog

@@ -318,6 +318,11 @@ Expected outcome:
 - Added a no-dependency Node test harness with `npm test`, using a single-process runner so tests work in restricted environments.
 - Added unit tests for command-safety guardrails and a context-projection test that verifies persisted compaction summaries are combined with recent raw messages.
 - Verified `npm test` passes.
+- Improved the React UI from a single chat column to a split layout with a left session sidebar, collapsible sidebar width, new-session button, session switching, and session deletion.
+- Added session deletion to `SessionStore`, `SessionService`, and the extension/webview message bridge; deleting a session removes its prompts and events and selects the next most recent session when needed.
+- Made the Model Providers dialog header sticky so it remains visible while scrolling provider settings.
+- Updated model provider cache behavior so fetching models without required API key/base URL clears stale cached models for that provider before surfacing the configuration error.
+- Verified `npm test` passes.
 
 ## Next Step
 

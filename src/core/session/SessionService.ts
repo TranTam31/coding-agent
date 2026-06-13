@@ -46,6 +46,11 @@ export class SessionService {
     return this.store.getCurrentSession();
   }
 
+  async deleteSession(sessionId: string) {
+    await this.store.deleteSession(sessionId);
+    return this.store.getCurrentSession();
+  }
+
   async submitPrompt(prompt: string): Promise<SessionSubmitResult> {
     const trimmed = prompt.trim();
 

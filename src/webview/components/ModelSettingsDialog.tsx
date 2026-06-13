@@ -32,7 +32,7 @@ export function ModelSettingsDialog({
   return (
     <div className="fixed inset-0 z-20 grid place-items-center bg-black/35 px-4">
       <section className="max-h-[82vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-agent bg-[var(--vscode-editorWidget-background)] shadow-2xl">
-        <header className="flex items-center justify-between border-b border-agent px-4 py-3">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-agent bg-[var(--vscode-editorWidget-background)] px-4 py-3">
           <div>
             <h2 className="m-0 text-sm font-semibold">Model Providers</h2>
             <p className="mt-1 text-xs text-muted">API keys are stored in VS Code SecretStorage, not in project files.</p>
