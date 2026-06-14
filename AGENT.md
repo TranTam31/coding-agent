@@ -235,6 +235,8 @@ Terminal execution is implemented through `run_command` and `bash` tools. Comman
 
 Terminal guardrails must reject obviously destructive commands before approval, including recursive force deletion, destructive git reset/clean commands, disk formatting/partitioning, raw disk writes, and shutdown/reboot commands. User approval is not enough for these commands in the prototype.
 
+Visible terminals should be reused per workspace/cwd when idle. Create a new visible terminal only when the matching terminal is busy, closed, or the command needs a different cwd.
+
 ## Tool Registry
 
 The tool registry is the boundary between the model and side effects.

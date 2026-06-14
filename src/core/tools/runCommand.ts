@@ -15,6 +15,16 @@ type RunCommandInput = {
   reason?: string;
 };
 
+type ManagedTerminal = {
+  terminal: vscode.Terminal;
+  cwd: string;
+  busy: boolean;
+  disposed: boolean;
+};
+
+const managedTerminals = new Map<string, ManagedTerminal[]>();
+let terminalCloseListenerRegistered = false;
+
 export const runCommandTool = createRunCommandTool("run_command");
 export const bashTool = createRunCommandTool("bash");
 
@@ -56,8 +66,13 @@ function createRunCommandTool(name: "run_command" | "bash"): ToolDefinition {
     execute: async (input, context) => {
       const parsed = parseInput(input);
       const cwd = resolveCwd(context.workspaceFolder.uri.fsPath, parsed.cwd);
-      const terminalName = showVisibleTerminal(parsed.command, cwd);
-      const result = await captureCommand(parsed.command, cwd, parsed.timeoutMs ?? DEFAULT_TIMEOUT_MS, context.signal);
+      const managedTerminal = getManagedTerminal(context.workspaceFolder.uri.fsPath, cwd, parsed.command);
+      const terminalName = managedTerminal.terminal.name;
+      managedTerminal.busy = true;
+      showVisibleTerminal(managedTerminal.terminal, parsed.command);
+      const result = await captureCommand(parsed.command, cwd, parsed.timeoutMs ?? DEFAULT_TIMEOUT_MS, context.signal).finally(() => {
+        managedTerminal.busy = false;
+      });
 
       return {
         content: [
@@ -136,16 +151,52 @@ function resolveCwd(workspaceRoot: string, cwd: string | undefined) {
   return resolved;
 }
 
-function showVisibleTerminal(command: string, cwd: string) {
-  const terminalName = `Coding Agent: ${command.slice(0, 40)}`;
+function getManagedTerminal(workspaceRoot: string, cwd: string, command: string) {
+  ensureTerminalCloseListener();
+  const terminals = managedTerminals.get(workspaceRoot) ?? [];
+  const reusable = terminals.find((candidate) => !candidate.busy && !candidate.disposed && candidate.cwd === cwd);
+
+  if (reusable) {
+    return reusable;
+  }
+
   const terminal = vscode.window.createTerminal({
-    name: terminalName,
+    name: `Coding Agent: ${path.basename(cwd) || command.slice(0, 24)}`,
     cwd
   });
+  const managedTerminal: ManagedTerminal = {
+    terminal,
+    cwd,
+    busy: false,
+    disposed: false
+  };
 
+  terminals.push(managedTerminal);
+  managedTerminals.set(workspaceRoot, terminals);
+  return managedTerminal;
+}
+
+function ensureTerminalCloseListener() {
+  if (terminalCloseListenerRegistered) {
+    return;
+  }
+
+  terminalCloseListenerRegistered = true;
+  vscode.window.onDidCloseTerminal((terminal) => {
+    for (const terminals of managedTerminals.values()) {
+      const managed = terminals.find((candidate) => candidate.terminal === terminal);
+
+      if (managed) {
+        managed.disposed = true;
+        managed.busy = false;
+      }
+    }
+  });
+}
+
+function showVisibleTerminal(terminal: vscode.Terminal, command: string) {
   terminal.show(false);
   terminal.sendText(command, true);
-  return terminalName;
 }
 
 function captureCommand(command: string, cwd: string, timeoutMs: number, signal: AbortSignal) {

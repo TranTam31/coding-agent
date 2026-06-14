@@ -326,6 +326,7 @@ Expected outcome:
 - Added AI-generated session metadata. After the first prompt for a default-titled session, `SessionNamer` asks the selected model for `{ title, summary }`, stores it in the session record, appends a `session.updated` event, and refreshes the sidebar when the result arrives.
 - Updated the sidebar to show the generated session title and summary instead of only `New coding task - <date>`.
 - Added a deterministic FakeModelClient path for session naming and verified `npm test` passes.
+- Improved terminal UX by reusing idle visible terminals per workspace/cwd. `run_command` and `bash` now send subsequent commands to an existing idle terminal and only create a new terminal when the matching terminal is busy, closed, or uses a different cwd.
 
 ## Next Step
 
